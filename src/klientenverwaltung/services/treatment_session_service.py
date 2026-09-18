@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -10,7 +10,11 @@ from klientenverwaltung.repositories import (
     TreatmentSessionRepository,
     TreatmentTypeRepository,
 )
-from klientenverwaltung.services.errors import NotFoundError, ValidationError
+from klientenverwaltung.services.errors import (
+    NotFoundError,
+    SessionOverlapError,
+    ValidationError,
+)
 from klientenverwaltung.services.transaction import transaction
 
 
@@ -24,9 +28,10 @@ class TreatmentSessionService:
         client_id: int,
         treatment_type_id: int,
         date: datetime,
-        duration_minutes: int | None = None,
+        duration_minutes: int,
         notes: str | None = None,
     ) -> TreatmentSession:
+        self._validate_duration(duration_minutes)
         with self._session_factory() as session:
             if ClientRepository(session).get_by_id(client_id) is None:
                 raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
@@ -36,6 +41,11 @@ class TreatmentSessionService:
             )
             self._require_active_treatment_type(treatment_type, treatment_type_id)
 
+            repo = TreatmentSessionRepository(session)
+            self._require_no_overlap(
+                repo, date, duration_minutes, exclude_session_id=None
+            )
+
             treatment_session = TreatmentSession(
                 client_id=client_id,
                 treatment_type_id=treatment_type_id,
@@ -44,7 +54,7 @@ class TreatmentSessionService:
                 notes=notes,
             )
             with transaction(session, "Sitzung konnte nicht gespeichert werden."):
-                TreatmentSessionRepository(session).add(treatment_session)
+                repo.add(treatment_session)
         return treatment_session
 
     def get_session(self, session_id: int) -> TreatmentSession:
@@ -66,9 +76,10 @@ class TreatmentSessionService:
         *,
         treatment_type_id: int,
         date: datetime,
-        duration_minutes: int | None = None,
+        duration_minutes: int,
         notes: str | None = None,
     ) -> TreatmentSession:
+        self._validate_duration(duration_minutes)
         with self._session_factory() as session:
             repo = TreatmentSessionRepository(session)
             treatment_session = repo.get_by_id(session_id)
@@ -81,6 +92,10 @@ class TreatmentSessionService:
                 treatment_type_id
             )
             self._require_active_treatment_type(treatment_type, treatment_type_id)
+
+            self._require_no_overlap(
+                repo, date, duration_minutes, exclude_session_id=session_id
+            )
 
             treatment_session.treatment_type_id = treatment_type_id
             treatment_session.date = date
@@ -100,6 +115,31 @@ class TreatmentSessionService:
                 )
             with transaction(session, "Sitzung konnte nicht gelöscht werden."):
                 repo.delete(treatment_session)
+
+    @staticmethod
+    def _validate_duration(duration_minutes: int) -> None:
+        if duration_minutes <= 0:
+            raise ValidationError("Die Dauer muss größer als 0 Minuten sein.")
+
+    @staticmethod
+    def _require_no_overlap(
+        repo: TreatmentSessionRepository,
+        date: datetime,
+        duration_minutes: int,
+        *,
+        exclude_session_id: int | None,
+    ) -> None:
+        end = date + timedelta(minutes=duration_minutes)
+        colliding = repo.find_overlapping(
+            start=date, end=end, exclude_session_id=exclude_session_id
+        )
+        if colliding is not None:
+            raise SessionOverlapError(
+                "Diese Sitzung überschneidet sich mit einem Termin von "
+                f"{colliding.client.first_name} {colliding.client.last_name} am "
+                f"{colliding.date.strftime('%d.%m.%Y')} um "
+                f"{colliding.date.strftime('%H:%M')} Uhr."
+            )
 
     @staticmethod
     def _require_active_treatment_type(

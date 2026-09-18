@@ -80,4 +80,5 @@ def treatment_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 1, 15, 10, 0),
+        duration_minutes=60,
     )

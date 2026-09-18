@@ -3,6 +3,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from klientenverwaltung.services import ClientListEntry
 
 COLUMN_TITLES = (
+    "Anrede",
     "Nachname",
     "Vorname",
     "Ort",
@@ -56,20 +57,22 @@ class ClientTableModel(QAbstractTableModel):
         entry = self._entries[index.row()]
         column = index.column()
         if column == 0:
-            return entry.last_name
+            return entry.salutation or ""
         if column == 1:
-            return entry.first_name
+            return entry.last_name
         if column == 2:
-            return entry.city or ""
+            return entry.first_name
         if column == 3:
-            return entry.phone or ""
+            return entry.city or ""
         if column == 4:
+            return entry.phone or ""
+        if column == 5:
             return (
                 entry.last_session_date.strftime("%d.%m.%Y")
                 if entry.last_session_date
                 else ""
             )
-        if column == 5:
+        if column == 6:
             return (
                 entry.next_appointment_date.strftime("%d.%m.%Y")
                 if entry.next_appointment_date

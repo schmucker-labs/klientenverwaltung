@@ -43,14 +43,19 @@ def test_get_last_and_next_session_dates_treats_now_as_future(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 6, 15, 11, 59, 59),
+        duration_minutes=60,
     )
     exactly_now = TreatmentSession(
-        client_id=client.id, treatment_type_id=treatment_type.id, date=now
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=now,
+        duration_minutes=60,
     )
     future = TreatmentSession(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 6, 15, 12, 0, 1),
+        duration_minutes=60,
     )
     db_session.add_all([past, exactly_now, future])
     db_session.commit()

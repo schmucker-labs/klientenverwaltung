@@ -3,6 +3,7 @@ from klientenverwaltung.services.errors import (
     ConflictError,
     NotFoundError,
     ServiceError,
+    SessionOverlapError,
     ValidationError,
 )
 from klientenverwaltung.services.treatment_session_service import (
@@ -16,6 +17,7 @@ __all__ = [
     "ConflictError",
     "NotFoundError",
     "ServiceError",
+    "SessionOverlapError",
     "TreatmentSessionService",
     "TreatmentTypeService",
     "ValidationError",

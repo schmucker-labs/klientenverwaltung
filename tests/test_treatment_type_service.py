@@ -81,6 +81,7 @@ def test_delete_used_treatment_type_raises_conflict_with_usage_count(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 1, 1, 10, 0),
+        duration_minutes=60,
     )
 
     with pytest.raises(ConflictError, match="1 Sitzung"):
@@ -99,6 +100,7 @@ def test_count_sessions_using_treatment_type(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 1, 1, 10, 0),
+        duration_minutes=60,
     )
 
     assert treatment_type_service.count_sessions_using(treatment_type.id) == 1

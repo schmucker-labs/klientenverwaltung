@@ -12,3 +12,7 @@ class NotFoundError(ServiceError):
 
 class ConflictError(ServiceError):
     """The operation would violate a uniqueness or usage rule."""
+
+
+class SessionOverlapError(ConflictError):
+    """A session's time range overlaps with another already-scheduled session."""

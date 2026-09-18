@@ -21,7 +21,8 @@ from klientenverwaltung.services import (
 )
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
 
-_NO_DURATION = 0
+_DEFAULT_DURATION_MINUTES = 60
+_MIN_DURATION_MINUTES = 5
 _MAX_DURATION_MINUTES = 480
 
 
@@ -59,8 +60,8 @@ class SessionDialog(QDialog):
             self._treatment_type_combo.addItem(treatment_type.name, treatment_type.id)
 
         self._duration_spinbox = QSpinBox(self)
-        self._duration_spinbox.setRange(_NO_DURATION, _MAX_DURATION_MINUTES)
-        self._duration_spinbox.setSpecialValueText("keine Angabe")
+        self._duration_spinbox.setRange(_MIN_DURATION_MINUTES, _MAX_DURATION_MINUTES)
+        self._duration_spinbox.setValue(_DEFAULT_DURATION_MINUTES)
         self._duration_spinbox.setSuffix(" Min.")
 
         self._notes_edit = QTextEdit(self)
@@ -89,7 +90,7 @@ class SessionDialog(QDialog):
             index = self._treatment_type_combo.findData(session.treatment_type_id)
             if index >= 0:
                 self._treatment_type_combo.setCurrentIndex(index)
-            self._duration_spinbox.setValue(session.duration_minutes or _NO_DURATION)
+            self._duration_spinbox.setValue(session.duration_minutes)
             self._notes_edit.setPlainText(session.notes or "")
         else:
             self._date_edit.setDateTime(QDateTime(datetime.now()))
@@ -100,7 +101,7 @@ class SessionDialog(QDialog):
         return {
             "date": self._date_edit.dateTime().toPython(),
             "treatment_type_id": self._treatment_type_combo.currentData(),
-            "duration_minutes": self._duration_spinbox.value() or None,
+            "duration_minutes": self._duration_spinbox.value(),
             "notes": self._notes_edit.toPlainText().strip() or None,
         }
 

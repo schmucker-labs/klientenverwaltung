@@ -54,6 +54,7 @@ class ClientListWidget(QWidget):
         self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table_view.horizontalHeader().setStretchLastSection(True)
         self._table_view.verticalHeader().setVisible(False)
+        self._table_view.setColumnWidth(0, 80)
 
         self._new_button = QPushButton("Neu", self)
         self._edit_button = QPushButton("Bearbeiten", self)

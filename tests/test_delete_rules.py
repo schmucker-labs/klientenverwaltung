@@ -42,6 +42,7 @@ def _make_client_with_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime.now(UTC),
+        duration_minutes=60,
     )
     db_session.add(session_entry)
     db_session.commit()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -10,12 +11,42 @@ from klientenverwaltung.repositories import ClientRepository, TreatmentSessionRe
 from klientenverwaltung.services.errors import NotFoundError, ValidationError
 from klientenverwaltung.services.transaction import transaction
 
+# German nobiliary/prefix particles: stay lowercase unless they open the field
+# (e.g. "anna von meyer" -> "Anna von Meyer", but "von meyer" -> "Von Meyer").
+_NAME_PARTICLES = frozenset({"von", "van", "de", "der", "zu", "den", "del", "di"})
+_WORD_PART_SPLIT_RE = re.compile(r"([-'])")
+
+
+def _normalize_casing(text: str) -> str:
+    """Title-case words that are entirely lowercase; leave everything else alone.
+
+    Mixed-case input (e.g. "McDonald") and tokens with no letters (e.g. a
+    house number) are left untouched. Hyphen- and apostrophe-joined parts of
+    a word (e.g. "anna-maria", "o'brien") are capitalized individually.
+    """
+    words = text.split(" ")
+    return " ".join(
+        _normalize_word(word, is_first=index == 0) for index, word in enumerate(words)
+    )
+
+
+def _normalize_word(word: str, *, is_first: bool) -> str:
+    if not word.islower():
+        return word
+    if word in _NAME_PARTICLES and not is_first:
+        return word
+    return "".join(
+        part if part in ("-", "'") else part.capitalize()
+        for part in _WORD_PART_SPLIT_RE.split(word)
+    )
+
 
 @dataclass(frozen=True)
 class ClientListEntry:
     """One row of the client list: exactly the fields that screen shows."""
 
     id: int
+    salutation: str | None
     first_name: str
     last_name: str
     city: str | None
@@ -47,6 +78,9 @@ class ClientService:
         notes: str | None = None,
     ) -> Client:
         first_name, last_name = self._validate_name(first_name, last_name)
+        salutation = self._normalize_optional(salutation)
+        street = self._normalize_optional(street)
+        city = self._normalize_optional(city)
         client = Client(
             first_name=first_name,
             last_name=last_name,
@@ -97,6 +131,7 @@ class ClientService:
             return [
                 ClientListEntry(
                     id=client.id,
+                    salutation=client.salutation,
                     first_name=client.first_name,
                     last_name=client.last_name,
                     city=client.city,
@@ -127,6 +162,9 @@ class ClientService:
         notes: str | None = None,
     ) -> Client:
         first_name, last_name = self._validate_name(first_name, last_name)
+        salutation = self._normalize_optional(salutation)
+        street = self._normalize_optional(street)
+        city = self._normalize_optional(city)
         with self._session_factory() as session:
             client = ClientRepository(session).get_by_id(client_id)
             if client is None:
@@ -178,4 +216,8 @@ class ClientService:
         last_name = last_name.strip()
         if not first_name or not last_name:
             raise ValidationError("Vor- und Nachname sind Pflichtfelder.")
-        return first_name, last_name
+        return _normalize_casing(first_name), _normalize_casing(last_name)
+
+    @staticmethod
+    def _normalize_optional(text: str | None) -> str | None:
+        return _normalize_casing(text) if text else text

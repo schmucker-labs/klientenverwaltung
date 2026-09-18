@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -27,6 +28,8 @@ from klientenverwaltung.ui.dialogs import (
 from klientenverwaltung.ui.optional_date_edit import OptionalDateEdit
 from klientenverwaltung.ui.session_dialog import SessionDialog
 from klientenverwaltung.ui.session_table_model import SessionTableModel
+
+_SALUTATION_SUGGESTIONS = ["", "Herr", "Frau", "Herr Dr.", "Frau Dr."]
 
 
 class ClientDetailDialog(QDialog):
@@ -61,7 +64,10 @@ class ClientDetailDialog(QDialog):
         self._reload_sessions()
 
     def _build_ui(self) -> None:
-        self._salutation_edit = QLineEdit(self)
+        self._salutation_combo = QComboBox(self)
+        self._salutation_combo.setEditable(True)
+        self._salutation_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._salutation_combo.addItems(_SALUTATION_SUGGESTIONS)
         self._first_name_edit = QLineEdit(self)
         self._last_name_edit = QLineEdit(self)
         self._birth_date_edit = OptionalDateEdit(self)
@@ -78,7 +84,7 @@ class ClientDetailDialog(QDialog):
         self._notes_edit.setFixedHeight(80)
 
         form = QFormLayout()
-        form.addRow("Anrede:", self._salutation_edit)
+        form.addRow("Anrede:", self._salutation_combo)
         form.addRow("Vorname:", self._first_name_edit)
         form.addRow("Nachname:", self._last_name_edit)
         form.addRow("Geburtsdatum:", self._birth_date_edit)
@@ -153,7 +159,7 @@ class ClientDetailDialog(QDialog):
         layout.addLayout(close_row)
 
     def _populate_form(self, client: Client) -> None:
-        self._salutation_edit.setText(client.salutation or "")
+        self._salutation_combo.setCurrentText(client.salutation or "")
         self._first_name_edit.setText(client.first_name)
         self._last_name_edit.setText(client.last_name)
         self._birth_date_edit.set_value(client.birth_date)
@@ -171,7 +177,7 @@ class ClientDetailDialog(QDialog):
         return {
             "first_name": self._first_name_edit.text().strip(),
             "last_name": self._last_name_edit.text().strip(),
-            "salutation": self._salutation_edit.text().strip() or None,
+            "salutation": self._salutation_combo.currentText().strip() or None,
             "birth_date": self._birth_date_edit.value(),
             "street": self._street_edit.text().strip() or None,
             "postal_code": self._postal_code_edit.text().strip() or None,

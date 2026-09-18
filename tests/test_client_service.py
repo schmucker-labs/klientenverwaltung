@@ -66,6 +66,93 @@ def test_list_clients_filters_by_search_term(client_service: ClientService) -> N
     assert [c.last_name for c in results] == ["Beispiel"]
 
 
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("anna", "Anna"),
+        ("müller", "Müller"),
+        ("MÜLLER", "MÜLLER"),
+        ("mcdonald", "Mcdonald"),
+        ("anna-maria", "Anna-Maria"),
+        ("o'brien", "O'Brien"),
+        ("von meyer", "Von Meyer"),
+        ("anna von meyer", "Anna von Meyer"),
+        ("van der berg", "Van der Berg"),
+    ],
+)
+def test_create_client_normalizes_last_name_casing(
+    client_service: ClientService, raw: str, expected: str
+) -> None:
+    client = client_service.create_client(first_name="Anna", last_name=raw)
+    assert client.last_name == expected
+
+
+def test_create_client_leaves_mixed_case_last_name_untouched(
+    client_service: ClientService,
+) -> None:
+    client = client_service.create_client(first_name="Anna", last_name="McDonald")
+    assert client.last_name == "McDonald"
+
+
+def test_create_client_normalizes_street_but_not_house_number(
+    client_service: ClientService,
+) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", street="hauptstraße 12a"
+    )
+    assert client.street == "Hauptstraße 12a"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("herr", "Herr"),
+        ("frau", "Frau"),
+        ("herr dr.", "Herr Dr."),
+        ("frau dr.", "Frau Dr."),
+    ],
+)
+def test_create_client_normalizes_salutation_casing(
+    client_service: ClientService, raw: str, expected: str
+) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", salutation=raw
+    )
+    assert client.salutation == expected
+
+
+def test_list_clients_with_last_session_includes_salutation(
+    client_service: ClientService,
+) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", salutation="frau dr."
+    )
+
+    entries = {
+        entry.id: entry for entry in client_service.list_clients_with_last_session()
+    }
+
+    assert entries[client.id].salutation == "Frau Dr."
+
+
+def test_create_client_normalizes_city_casing(client_service: ClientService) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", city="sankt anna am aigen"
+    )
+    assert client.city == "Sankt Anna Am Aigen"
+
+
+def test_update_client_normalizes_casing(client_service: ClientService) -> None:
+    client = client_service.create_client(first_name="Anna", last_name="Muster")
+
+    updated = client_service.update_client(
+        client.id, first_name="anna-lena", last_name="von der leyen"
+    )
+
+    assert updated.first_name == "Anna-Lena"
+    assert updated.last_name == "Von der Leyen"
+
+
 def test_update_client_changes_fields(
     client_service: ClientService, client: Client
 ) -> None:
@@ -112,11 +199,13 @@ def test_list_clients_with_last_session_reports_latest_past_date_per_client(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2020, 1, 1, 10, 0),
+        duration_minutes=60,
     )
     latest = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2020, 2, 1, 10, 0),
+        duration_minutes=60,
     )
 
     entries = {
@@ -139,16 +228,19 @@ def test_list_clients_with_last_session_separates_next_appointment_from_last_ses
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2020, 1, 1, 10, 0),
+        duration_minutes=60,
     )
     near_future = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2999, 1, 1, 10, 0),
+        duration_minutes=60,
     )
     far_future = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2999, 6, 1, 10, 0),
+        duration_minutes=60,
     )
 
     entries = {
