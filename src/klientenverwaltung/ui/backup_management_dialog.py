@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -28,6 +27,7 @@ from klientenverwaltung.ui.dialogs import (
     show_info,
 )
 from klientenverwaltung.ui.window_settings import (
+    finalize_column_widths,
     restore_geometry,
     restore_header_state,
     save_geometry,
@@ -85,14 +85,15 @@ class BackupManagementDialog(QDialog):
         self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         header = self._table_view.horizontalHeader()
         self._table_view.verticalHeader().setVisible(False)
-        if not restore_header_state(header, _HEADER_STATE_SETTINGS_KEY):
-            # Datum, Größe and Herkunft only need their content's width;
-            # Dateiname is the one open-ended column, so it gets whatever
-            # space is left over.
+        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY)
+        if not restored:
+            # Datum, Größe and Herkunft only need their content's width on
+            # first run; Dateiname is the one open-ended column, so it gets
+            # whatever space is left over.
             self._table_view.resizeColumnsToContents()
-            header.setSectionResizeMode(
-                _FILENAME_COLUMN, QHeaderView.ResizeMode.Stretch
-            )
+        finalize_column_widths(
+            header, self._table_model.columnCount(), _FILENAME_COLUMN, restored
+        )
         header.sectionResized.connect(self._save_header_state)
         self._table_view.selectionModel().selectionChanged.connect(
             self._update_button_states

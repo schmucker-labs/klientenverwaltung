@@ -1,4 +1,11 @@
-from PySide6.QtCore import QByteArray, QRect, QSettings
+from PySide6.QtCore import (
+    QByteArray,
+    QEvent,
+    QObject,
+    QRect,
+    QSettings,
+    QSignalBlocker,
+)
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHeaderView, QWidget
 
@@ -43,7 +50,14 @@ def restore_header_state(header: QHeaderView, key: str) -> bool:
 
     Always enforces MIN_COLUMN_WIDTH first, regardless of outcome. Returns
     True if a saved state was found and applied; False on first run, so the
-    caller can apply its own content-based default layout instead.
+    caller can apply its own content-based default widths instead.
+
+    restoreState() also restores each section's resize mode and the
+    stretchLastSection flag exactly as they were when saveState() ran. A
+    caller MUST always follow this with finalize_column_widths() regardless
+    of the return value - otherwise an old (possibly buggy) mode layout
+    saved under a prior version of the code keeps overriding every later
+    fix, for any user who already has a saved header state.
     """
     header.setMinimumSectionSize(MIN_COLUMN_WIDTH)
     data = QSettings().value(key)
@@ -52,3 +66,192 @@ def restore_header_state(header: QHeaderView, key: str) -> bool:
 
 def save_header_state(header: QHeaderView, key: str) -> None:
     QSettings().setValue(key, header.saveState())
+
+
+def finalize_column_widths(
+    header: QHeaderView, column_count: int, fill_column: int, restored: bool
+) -> None:
+    """Forces every column to plain Interactive with stretchLastSection off,
+    and keeps the columns filling the header's width whenever it changes
+    (window resize, splitter drag, ...) from then on. Call unconditionally,
+    always after restore_header_state() (see its docstring for why "always"
+    matters), passing its return value as `restored`.
+
+    Never uses ResizeMode.Stretch. A stretched column has no drag handle of
+    its own - Qt shows a handle for every column boundary except the one
+    belonging to the stretched section, which shifts the handle-to-border
+    mapping for every column after it one column to the right (that's the
+    "wrong edge moves" bug this replaces).
+
+    On first run, the caller must already have sized every column except
+    `fill_column` to its content (e.g. via resizeColumnsToContents()) before
+    calling this - the very first layout tops up `fill_column` with
+    whatever header width is left over. Every later header resize (and, for
+    a returning user with saved widths, the first one too) redistributes
+    the width change proportionally across every column instead, since by
+    then every column may carry a width the user chose deliberately. If the
+    window shrinks so far that every column is already at MIN_COLUMN_WIDTH,
+    the table's horizontal scrollbar appears rather than shrinking further.
+
+    Separately, a manual drag of one column's own border (its
+    sectionResized signal) is compensated for immediately: the column(s) to
+    its right give up or absorb exactly that much width, cascading
+    rightward down to MIN_COLUMN_WIDTH, so the table's total width never
+    changes just because the user dragged a column - no empty strip opens
+    up on the right, and no horizontal scrollbar appears purely from
+    dragging. If every column to the right is already at MIN_COLUMN_WIDTH
+    and the user keeps growing a column, that column's own growth is
+    clamped for the same reason.
+    """
+    header.setStretchLastSection(False)
+    for column in range(column_count):
+        header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+    _AutoFitColumns(header, column_count, fill_column, first_run=not restored)
+
+
+class _AutoFitColumns(QObject):
+    """Keeps a header's columns always summing to exactly its own width.
+
+    Two independent triggers feed the same invariant:
+
+    - The header's own resize event (window resize, splitter drag, ...):
+      handled by _fit(), which redistributes the change proportionally
+      across every column. Installed as an event filter on the header
+      itself rather than the table's viewport, since the header is always
+      resized in lockstep with the viewport - watching the header's own
+      resize event is equivalent to watching "how much width is available
+      for columns" without needing a reference to the table view.
+
+    - A user dragging a single column's border (the sectionResized
+      signal): handled by _compensate_drag(), which shifts exactly that
+      much width to/from the column(s) to its right, cascading down to
+      MIN_COLUMN_WIDTH, so the total never changes just because the user
+      resized one column.
+
+    Every adjustment either handler makes runs inside QSignalBlocker(header),
+    so it can never re-enter this same class through the signal it would
+    otherwise emit, and never reaches a caller's own sectionResized-connected
+    slot (typically one that saves the header state) - only the user's
+    actual drag, or the header's actual resize, is a new event to react to
+    or persist; everything this class then does about it is a mechanical
+    side effect of that one event, not a second one.
+
+    Parented to the header, so it lives exactly as long as the header does.
+    """
+
+    def __init__(
+        self,
+        header: QHeaderView,
+        column_count: int,
+        fill_column: int,
+        first_run: bool,
+    ) -> None:
+        super().__init__(header)
+        self._header = header
+        self._column_count = column_count
+        self._fill_column = fill_column
+        self._laid_out_once = not first_run
+        header.installEventFilter(self)
+        header.sectionResized.connect(self._compensate_drag)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            self._fit(self._header.width())
+        return False
+
+    def _compensate_drag(
+        self, logical_index: int, old_size: int, new_size: int
+    ) -> None:
+        delta = new_size - old_size
+        if delta == 0:
+            return
+        header = self._header
+        remaining = delta
+        with QSignalBlocker(header):
+            for column in range(logical_index + 1, self._column_count):
+                if remaining == 0:
+                    break
+                current = header.sectionSize(column)
+                if remaining > 0:
+                    # The dragged column grew - shrink this one to cover as
+                    # much of that as it can without going below minimum.
+                    give = min(remaining, current - MIN_COLUMN_WIDTH)
+                    if give > 0:
+                        header.resizeSection(column, current - give)
+                        remaining -= give
+                else:
+                    # The dragged column shrank - hand all of the freed
+                    # width straight to its immediate right neighbor.
+                    header.resizeSection(column, current - remaining)
+                    remaining = 0
+            if remaining > 0:
+                # No column to the right had any room left to give up -
+                # clamp the dragged column's own growth so the total still
+                # can't exceed the header's width.
+                header.resizeSection(logical_index, new_size - remaining)
+
+    def _fit(self, available_width: int) -> None:
+        if available_width <= 0:
+            return
+        header = self._header
+        widths = [header.sectionSize(c) for c in range(self._column_count)]
+        total = sum(widths)
+        if total == available_width:
+            self._laid_out_once = True
+            return
+        if not self._laid_out_once:
+            other_columns_width = total - widths[self._fill_column]
+            new_widths = list(widths)
+            new_widths[self._fill_column] = max(
+                MIN_COLUMN_WIDTH, available_width - other_columns_width
+            )
+        else:
+            new_widths = _proportional_widths(
+                widths, available_width, MIN_COLUMN_WIDTH
+            )
+        self._laid_out_once = True
+        if new_widths == widths:
+            return
+        # sectionResized must not fire here - a caller typically saves the
+        # header state on that signal, and this is an automatic layout
+        # adjustment, not a user-initiated resize that should be persisted.
+        with QSignalBlocker(header):
+            for column, width in enumerate(new_widths):
+                if width != widths[column]:
+                    header.resizeSection(column, width)
+
+
+def _proportional_widths(
+    widths: list[int], target_total: int, min_width: int
+) -> list[int]:
+    """Scales `widths` so they sum to `target_total`, in proportion to each
+    column's current share of the total, without going below `min_width`.
+
+    If honoring `min_width` for every column would overshoot `target_total`
+    (the available width is too small for all columns at their minimum),
+    the result simply doesn't sum to `target_total` - the caller/view is
+    then expected to show a horizontal scrollbar, exactly as it would for a
+    manually widened column.
+    """
+    total = sum(widths)
+    if total <= 0:
+        return widths
+    scaled = [max(min_width, round(width * target_total / total)) for width in widths]
+    diff = target_total - sum(scaled)
+    if diff == 0:
+        return scaled
+    # Nudge one pixel at a time, largest column first, until the total
+    # matches exactly; skips columns already at min_width when shrinking.
+    order = sorted(range(len(widths)), key=lambda i: scaled[i], reverse=True)
+    guard = 0
+    max_iterations = 10 * len(widths) + 10
+    while diff != 0 and guard < max_iterations:
+        index = order[guard % len(order)]
+        if diff > 0:
+            scaled[index] += 1
+            diff -= 1
+        elif scaled[index] > min_width:
+            scaled[index] -= 1
+            diff += 1
+        guard += 1
+    return scaled

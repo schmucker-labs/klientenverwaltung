@@ -21,6 +21,7 @@ from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_table_model import ClientTableModel
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.window_settings import (
+    finalize_column_widths,
     restore_header_state,
     save_header_state,
 )
@@ -60,9 +61,12 @@ class ClientListWidget(QWidget):
         self._table_view.setSortingEnabled(True)
         header = self._table_view.horizontalHeader()
         self._table_view.verticalHeader().setVisible(False)
-        if not restore_header_state(header, _HEADER_STATE_SETTINGS_KEY):
-            header.setStretchLastSection(True)
+        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY)
+        if not restored:
             self._table_view.setColumnWidth(0, 80)
+        # Nächster Termin is the one open-ended column, so it gets whatever
+        # space is left over.
+        finalize_column_widths(header, self._table_model.columnCount(), 6, restored)
         header.sectionResized.connect(self._save_header_state)
         header.sortIndicatorChanged.connect(self._save_header_state)
 

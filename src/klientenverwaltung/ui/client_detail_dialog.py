@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -33,6 +32,7 @@ from klientenverwaltung.ui.session_dialog import SessionDialog
 from klientenverwaltung.ui.session_note_dialog import SessionNoteDialog
 from klientenverwaltung.ui.session_table_model import NOTE_COLUMN, SessionTableModel
 from klientenverwaltung.ui.window_settings import (
+    finalize_column_widths,
     restore_geometry,
     restore_header_state,
     save_geometry,
@@ -182,14 +182,19 @@ class ClientDetailDialog(QDialog):
         )
         session_header = self._session_table_view.horizontalHeader()
         self._session_table_view.verticalHeader().setVisible(False)
-        if not restore_header_state(session_header, _SESSION_TABLE_HEADER_SETTINGS_KEY):
+        restored = restore_header_state(
+            session_header, _SESSION_TABLE_HEADER_SETTINGS_KEY
+        )
+        if not restored:
             self._session_table_view.resizeColumnsToContents()
-            # Behandlungsart (treatment type name) is the one open-ended,
-            # variable-length column, so it gets the remaining space rather
-            # than stretching whichever column happens to be last -
-            # Notiz is last and must stay a narrow, fixed-width icon column.
-            session_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             self._session_table_view.setColumnWidth(NOTE_COLUMN, 40)
+        # Behandlungsart (treatment type name) is the one open-ended,
+        # variable-length column, so it gets the remaining space rather than
+        # stretching whichever column happens to be last - Notiz is last and
+        # must stay a narrow, fixed-width icon column.
+        finalize_column_widths(
+            session_header, self._session_table_model.columnCount(), 1, restored
+        )
         session_header.sectionResized.connect(self._save_session_table_header_state)
         self._session_table_view.selectionModel().selectionChanged.connect(
             self._update_session_button_states

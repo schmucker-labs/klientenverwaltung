@@ -171,3 +171,19 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
   Werte, die unbrauchbar sind (z. B. Höhe 0, Fenster außerhalb des Bildschirms),
   werden verworfen und durch die Standardwerte ersetzt.
 - Mindestbreite pro Tabellenspalte, damit Spalten nicht auf null gezogen werden können.
+- Keine Tabellenspalte dauerhaft auf ResizeMode.Stretch: Eine gestreckte Spalte hat
+  keinen eigenen Ziehgriff, dadurch verschiebt sich die Zuordnung aller folgenden
+  Trenner um eine Position. Stattdessen alle Spalten Interactive und die Startbreiten
+  beim ersten Öffnen einmalig berechnen, sodass sie die Tabellenbreite ausfüllen
+- Tabellenbreite an die Fensterbreite koppeln: Beim Ändern der Fenstergröße die
+  Differenz proportional auf die Spalten verteilen, damit rechts weder ein leerer
+  Streifen bleibt noch die Tabelle über den Fensterrand hinausragt. Mindestbreiten
+  einhalten. Beim automatischen Anpassen kein Speichern in QSettings auslösen
+  (sonst Endlosschleife über sectionResized).
+- Tabellen füllen immer exakt die verfügbare Breite: linker Rand der ersten und rechter
+  Rand der letzten Spalte sitzen fest am Fensterrand. Am rechten Rand der letzten Spalte
+  gibt es keinen Ziehgriff. Ein Trenner ändert nur die Aufteilung zwischen Spalten,
+  nie die Gesamtbreite; der Platz wird von den Nachbarspalten geholt oder an sie
+  abgegeben, bis zur Mindestbreite. Dabei darf keine Spalte auf Stretch stehen, sonst
+  verrutscht die Zuordnung der Trenner (siehe oben). Beim automatischen Anpassen kein
+  Speichern in QSettings auslösen.
