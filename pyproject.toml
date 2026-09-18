@@ -1,0 +1,36 @@
+[project]
+name = "klientenverwaltung"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "ravsen21", email = "raphaelschmucker@web.de" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.0",
+    "pyside6>=6.11.2",
+    "sqlalchemy>=2.0.54",
+    "sqlcipher3-wheels>=0.5.7",
+]
+
+[project.scripts]
+klientenverwaltung = "klientenverwaltung.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.22.3",
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
+
+[tool.ruff.lint]
+ignore = [
+    # Lokale Desktop-Anwendung fuer eine Praxis an einem Ort: Termine und
+    # Geburtsdaten sind bewusst naive lokale Datumswerte ohne Zeitzone.
+    "DTZ",
+]

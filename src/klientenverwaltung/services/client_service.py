@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime
+
+from sqlalchemy.orm import Session, sessionmaker
+
+from klientenverwaltung.models import Client
+from klientenverwaltung.repositories import ClientRepository, TreatmentSessionRepository
+from klientenverwaltung.services.errors import NotFoundError, ValidationError
+from klientenverwaltung.services.transaction import transaction
+
+
+@dataclass(frozen=True)
+class ClientListEntry:
+    """One row of the client list: exactly the fields that screen shows."""
+
+    id: int
+    first_name: str
+    last_name: str
+    city: str | None
+    phone: str | None
+    archived: bool
+    last_session_date: datetime | None
+    next_appointment_date: datetime | None
+
+
+class ClientService:
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._session_factory = session_factory
+
+    def create_client(
+        self,
+        *,
+        first_name: str,
+        last_name: str,
+        salutation: str | None = None,
+        birth_date: date | None = None,
+        street: str | None = None,
+        postal_code: str | None = None,
+        city: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+        concern: str | None = None,
+        referral_source: str | None = None,
+        consent_date: date | None = None,
+        notes: str | None = None,
+    ) -> Client:
+        first_name, last_name = self._validate_name(first_name, last_name)
+        client = Client(
+            first_name=first_name,
+            last_name=last_name,
+            salutation=salutation,
+            birth_date=birth_date,
+            street=street,
+            postal_code=postal_code,
+            city=city,
+            phone=phone,
+            email=email,
+            concern=concern,
+            referral_source=referral_source,
+            consent_date=consent_date,
+            notes=notes,
+        )
+        with (
+            self._session_factory() as session,
+            transaction(session, "Klient konnte nicht gespeichert werden."),
+        ):
+            ClientRepository(session).add(client)
+        return client
+
+    def get_client(self, client_id: int) -> Client:
+        with self._session_factory() as session:
+            client = ClientRepository(session).get_by_id(client_id)
+        if client is None:
+            raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
+        return client
+
+    def list_clients(
+        self, *, include_archived: bool = False, search: str | None = None
+    ) -> list[Client]:
+        with self._session_factory() as session:
+            return ClientRepository(session).list(
+                include_archived=include_archived, search=search
+            )
+
+    def list_clients_with_last_session(
+        self, *, include_archived: bool = False, search: str | None = None
+    ) -> list[ClientListEntry]:
+        with self._session_factory() as session:
+            clients = ClientRepository(session).list(
+                include_archived=include_archived, search=search
+            )
+            session_dates = TreatmentSessionRepository(
+                session
+            ).get_last_and_next_session_dates([client.id for client in clients])
+            return [
+                ClientListEntry(
+                    id=client.id,
+                    first_name=client.first_name,
+                    last_name=client.last_name,
+                    city=client.city,
+                    phone=client.phone,
+                    archived=client.archived,
+                    last_session_date=session_dates.get(client.id, (None, None))[0],
+                    next_appointment_date=session_dates.get(client.id, (None, None))[1],
+                )
+                for client in clients
+            ]
+
+    def update_client(
+        self,
+        client_id: int,
+        *,
+        first_name: str,
+        last_name: str,
+        salutation: str | None = None,
+        birth_date: date | None = None,
+        street: str | None = None,
+        postal_code: str | None = None,
+        city: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+        concern: str | None = None,
+        referral_source: str | None = None,
+        consent_date: date | None = None,
+        notes: str | None = None,
+    ) -> Client:
+        first_name, last_name = self._validate_name(first_name, last_name)
+        with self._session_factory() as session:
+            client = ClientRepository(session).get_by_id(client_id)
+            if client is None:
+                raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
+            client.first_name = first_name
+            client.last_name = last_name
+            client.salutation = salutation
+            client.birth_date = birth_date
+            client.street = street
+            client.postal_code = postal_code
+            client.city = city
+            client.phone = phone
+            client.email = email
+            client.concern = concern
+            client.referral_source = referral_source
+            client.consent_date = consent_date
+            client.notes = notes
+            with transaction(session, "Klient konnte nicht gespeichert werden."):
+                pass
+        return client
+
+    def archive_client(self, client_id: int) -> None:
+        self._set_archived(client_id, archived=True)
+
+    def unarchive_client(self, client_id: int) -> None:
+        self._set_archived(client_id, archived=False)
+
+    def delete_client(self, client_id: int) -> None:
+        with self._session_factory() as session:
+            repo = ClientRepository(session)
+            client = repo.get_by_id(client_id)
+            if client is None:
+                raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
+            with transaction(session, "Klient konnte nicht gelöscht werden."):
+                repo.delete(client)
+
+    def _set_archived(self, client_id: int, *, archived: bool) -> None:
+        with self._session_factory() as session:
+            client = ClientRepository(session).get_by_id(client_id)
+            if client is None:
+                raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
+            client.archived = archived
+            with transaction(session, "Klient konnte nicht aktualisiert werden."):
+                pass
+
+    @staticmethod
+    def _validate_name(first_name: str, last_name: str) -> tuple[str, str]:
+        first_name = first_name.strip()
+        last_name = last_name.strip()
+        if not first_name or not last_name:
+            raise ValidationError("Vor- und Nachname sind Pflichtfelder.")
+        return first_name, last_name

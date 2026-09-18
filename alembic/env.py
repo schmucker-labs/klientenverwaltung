@@ -1,0 +1,90 @@
+import os
+from logging.config import fileConfig
+from pathlib import Path
+
+from alembic import context
+from klientenverwaltung.models import Base
+from klientenverwaltung.storage import create_encrypted_engine
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+
+def _dev_db_path_and_password() -> tuple[Path, str]:
+    """Read connection details for standalone CLI use (e.g. --autogenerate).
+
+    alembic.ini deliberately has no sqlalchemy.url: the real application
+    passes an already-open, encrypted connection via config.attributes at
+    startup (see main.py), since path and password are only known once the
+    USB-Datenplatte was found and the user entered the password. For manual
+    `alembic` CLI invocations during development, these two environment
+    variables stand in for that.
+    """
+    path = os.environ.get("KLIENTENVERWALTUNG_DB_PATH")
+    password = os.environ.get("KLIENTENVERWALTUNG_DB_PASSWORD")
+    if not path or not password:
+        raise RuntimeError(
+            "Keine offene Verbindung uebergeben und "
+            "KLIENTENVERWALTUNG_DB_PATH / KLIENTENVERWALTUNG_DB_PASSWORD sind "
+            "nicht gesetzt. Fuer manuelle alembic-Aufrufe (z. B. "
+            "--autogenerate) beide Umgebungsvariablen setzen."
+        )
+    return Path(path), password
+
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode (SQL script generation)."""
+    db_path, password = _dev_db_path_and_password()
+    engine = create_encrypted_engine(db_path, password)
+    context.configure(
+        url=engine.url.render_as_string(hide_password=False),
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        render_as_batch=True,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode against a real connection."""
+    connection = config.attributes.get("connection")
+
+    if connection is not None:
+        # Provided by the application at startup: an already-open,
+        # encrypted connection to the database on the USB-Datenplatte.
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_as_batch=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
+    db_path, password = _dev_db_path_and_password()
+    connectable = create_encrypted_engine(db_path, password)
+    with connectable.connect() as dev_connection:
+        context.configure(
+            connection=dev_connection,
+            target_metadata=target_metadata,
+            render_as_batch=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
