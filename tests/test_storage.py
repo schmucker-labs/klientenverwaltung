@@ -1,6 +1,7 @@
 import shutil
 import uuid
 from pathlib import Path
+from typing import Self
 
 import pytest
 from sqlalchemy import text
@@ -142,6 +143,96 @@ class TestSetUpDataDrive:
 
         with pytest.raises(storage.StorageError):
             storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+
+    def test_cleans_up_identifier_and_database_file_when_migrations_fail(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """apply_migrations() wraps its own errors as StorageError, not
+        SQLAlchemyError - this must still trigger cleanup, not just a
+        plain SQLAlchemyError from elsewhere in the try block."""
+        drive = tmp_path / "drive"
+        drive.mkdir()
+
+        def _failing_apply_migrations(_engine: object) -> None:
+            raise storage.StorageError("Migration ist fehlgeschlagen.")
+
+        monkeypatch.setattr(storage, "apply_migrations", _failing_apply_migrations)
+
+        with pytest.raises(storage.StorageError, match="Migration ist fehlgeschlagen"):
+            storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+
+        assert not (drive / storage.IDENTIFIER_FILENAME).exists()
+        assert not (drive / storage.DB_FILENAME).exists()
+
+    def test_cleans_up_identifier_and_database_file_when_default_data_insert_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+
+        class _FailingSession:
+            def __init__(self, _engine: object) -> None:
+                pass
+
+            def __enter__(self) -> Self:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                pass
+
+            def add_all(self, _items: object) -> None:
+                pass
+
+            def commit(self) -> None:
+                from sqlalchemy.exc import SQLAlchemyError
+
+                raise SQLAlchemyError("boom")
+
+        monkeypatch.setattr(storage, "Session", _FailingSession)
+
+        with pytest.raises(storage.StorageError):
+            storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+
+        assert not (drive / storage.IDENTIFIER_FILENAME).exists()
+        assert not (drive / storage.DB_FILENAME).exists()
+
+
+class TestHasPendingMigrations:
+    def test_false_right_after_set_up_data_drive(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        engine = storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+        try:
+            assert storage.has_pending_migrations(engine) is False
+        finally:
+            engine.dispose()
+
+    def test_true_when_database_predates_the_latest_migration(
+        self, tmp_path: Path
+    ) -> None:
+        from alembic import command
+
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        db_path = drive / storage.DB_FILENAME
+        engine = storage.create_encrypted_engine(db_path, "ein-sehr-sicheres-passwort")
+        try:
+            with engine.connect() as connection:
+                command.upgrade(storage._alembic_config(connection), "9ac5d775d208")
+            assert storage.has_pending_migrations(engine) is True
+        finally:
+            engine.dispose()
+
+
+class TestDriveAlreadySetUp:
+    def test_true_when_identifier_file_present(self, tmp_path: Path) -> None:
+        drive = _make_drive_with_identifier(tmp_path / "drive")
+        assert storage.drive_already_set_up(drive) is True
+
+    def test_false_when_no_identifier_file(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        assert storage.drive_already_set_up(drive) is False
 
 
 class TestOpenDatabase:

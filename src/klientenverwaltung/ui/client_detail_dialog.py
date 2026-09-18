@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -31,11 +32,17 @@ from klientenverwaltung.ui.optional_date_edit import OptionalDateEdit
 from klientenverwaltung.ui.session_dialog import SessionDialog
 from klientenverwaltung.ui.session_note_dialog import SessionNoteDialog
 from klientenverwaltung.ui.session_table_model import NOTE_COLUMN, SessionTableModel
-from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+from klientenverwaltung.ui.window_settings import (
+    restore_geometry,
+    restore_header_state,
+    save_geometry,
+    save_header_state,
+)
 
 _SALUTATION_SUGGESTIONS = ["", "Herr", "Frau", "Herr Dr.", "Frau Dr."]
 _GEOMETRY_SETTINGS_KEY = "client_detail/geometry"
 _SPLITTER_SETTINGS_KEY = "client_detail/splitter_state"
+_SESSION_TABLE_HEADER_SETTINGS_KEY = "client_detail/session_table_header_state"
 
 
 class ClientDetailDialog(QDialog):
@@ -173,9 +180,17 @@ class ClientDetailDialog(QDialog):
         self._session_table_view.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
-        self._session_table_view.horizontalHeader().setStretchLastSection(True)
+        session_header = self._session_table_view.horizontalHeader()
         self._session_table_view.verticalHeader().setVisible(False)
-        self._session_table_view.setColumnWidth(NOTE_COLUMN, 40)
+        if not restore_header_state(session_header, _SESSION_TABLE_HEADER_SETTINGS_KEY):
+            self._session_table_view.resizeColumnsToContents()
+            # Behandlungsart (treatment type name) is the one open-ended,
+            # variable-length column, so it gets the remaining space rather
+            # than stretching whichever column happens to be last -
+            # Notiz is last and must stay a narrow, fixed-width icon column.
+            session_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self._session_table_view.setColumnWidth(NOTE_COLUMN, 40)
+        session_header.sectionResized.connect(self._save_session_table_header_state)
         self._session_table_view.selectionModel().selectionChanged.connect(
             self._update_session_button_states
         )
@@ -207,6 +222,12 @@ class ClientDetailDialog(QDialog):
 
     def _save_splitter_state(self) -> None:
         QSettings().setValue(_SPLITTER_SETTINGS_KEY, self._splitter.saveState())
+
+    def _save_session_table_header_state(self) -> None:
+        save_header_state(
+            self._session_table_view.horizontalHeader(),
+            _SESSION_TABLE_HEADER_SETTINGS_KEY,
+        )
 
     def done(self, result: int) -> None:
         # done() is the single choke point every close path (accept, the

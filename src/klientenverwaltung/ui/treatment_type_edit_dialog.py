@@ -10,6 +10,9 @@ from PySide6.QtWidgets import (
 
 from klientenverwaltung.services import ServiceError, TreatmentTypeService
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+
+_GEOMETRY_SETTINGS_KEY = "treatment_type_edit/geometry"
 
 
 class TreatmentTypeEditDialog(QDialog):
@@ -23,6 +26,7 @@ class TreatmentTypeEditDialog(QDialog):
         self._service = treatment_type_service
         self._treatment_type_id = treatment_type_id
         self.setModal(True)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         self._name_edit = QLineEdit(self)
         self._description_edit = QTextEdit(self)
@@ -92,3 +96,7 @@ class TreatmentTypeEditDialog(QDialog):
             super().reject()
             return
         self._on_save_clicked()
+
+    def done(self, result: int) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().done(result)

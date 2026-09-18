@@ -7,12 +7,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+
+_GEOMETRY_SETTINGS_KEY = "password/geometry"
+
 
 class PasswordDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Passwort eingeben")
         self.setModal(True)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         label = QLabel("Bitte Passwort für die Datenplatte eingeben:", self)
 
@@ -36,6 +41,10 @@ class PasswordDialog(QDialog):
 
     def password(self) -> str:
         return self._password_edit.text()
+
+    def done(self, result: int) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().done(result)
 
 
 def ask_for_password(parent: QWidget | None = None) -> str | None:

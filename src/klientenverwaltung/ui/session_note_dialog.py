@@ -7,6 +7,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+
+_GEOMETRY_SETTINGS_KEY = "session_note/geometry"
+
 
 class SessionNoteDialog(QDialog):
     """Read-only popup showing a session's note.
@@ -20,6 +24,7 @@ class SessionNoteDialog(QDialog):
         self.setWindowTitle("Notiz")
         self.setModal(True)
         self.resize(400, 300)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         self._notes_edit = QTextEdit(self)
         self._notes_edit.setPlainText(notes)
@@ -39,3 +44,7 @@ class SessionNoteDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(self._notes_edit)
         layout.addLayout(button_row)
+
+    def done(self, result: int) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().done(result)

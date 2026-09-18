@@ -1,3 +1,5 @@
+from typing import Literal
+
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 
@@ -7,6 +9,18 @@ def show_error(
     """Shows a plain, German, traceback-free error dialog with a single OK button."""
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Critical)
+    box.setWindowTitle(title)
+    box.setText(message)
+    box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+    box.exec()
+
+
+def show_info(
+    message: str, *, title: str = "Information", parent: QWidget | None = None
+) -> None:
+    """Shows a plain, German, informational dialog with a single OK button."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Information)
     box.setWindowTitle(title)
     box.setText(message)
     box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
@@ -24,6 +38,29 @@ def ask_retry(message: str, *, title: str, parent: QWidget | None = None) -> boo
     box.setDefaultButton(retry_button)
     box.exec()
     return box.clickedButton() is retry_button
+
+
+def ask_retry_or_setup(
+    message: str, *, title: str, parent: QWidget | None = None
+) -> Literal["retry", "setup", "cancel"]:
+    """Like ask_retry, plus a third option to set up a brand-new data drive."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle(title)
+    box.setText(message)
+    retry_button = box.addButton("Erneut versuchen", QMessageBox.ButtonRole.AcceptRole)
+    setup_button = box.addButton(
+        "Neue Datenplatte einrichten…", QMessageBox.ButtonRole.ActionRole
+    )
+    box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(retry_button)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is retry_button:
+        return "retry"
+    if clicked is setup_button:
+        return "setup"
+    return "cancel"
 
 
 def ask_save_discard_cancel(
@@ -84,3 +121,24 @@ def ask_confirm_delete(
     box.setDefaultButton(cancel_button)
     box.exec()
     return box.clickedButton() is delete_button
+
+
+def ask_confirm_restore(
+    message: str, *, title: str, parent: QWidget | None = None
+) -> bool:
+    """Shows an unambiguous overwrite warning for restoring a backup.
+
+    Defaults to "Abbrechen" (safe default) - restoring overwrites the
+    current database and cannot be undone.
+    """
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle(title)
+    box.setText(message)
+    restore_button = box.addButton(
+        "Wiederherstellen", QMessageBox.ButtonRole.DestructiveRole
+    )
+    cancel_button = box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(cancel_button)
+    box.exec()
+    return box.clickedButton() is restore_button

@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QHBoxLayout,
+    QHeaderView,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -17,9 +18,15 @@ from klientenverwaltung.ui.dialogs import (
 )
 from klientenverwaltung.ui.treatment_type_edit_dialog import TreatmentTypeEditDialog
 from klientenverwaltung.ui.treatment_type_table_model import TreatmentTypeTableModel
-from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+from klientenverwaltung.ui.window_settings import (
+    restore_geometry,
+    restore_header_state,
+    save_geometry,
+    save_header_state,
+)
 
 _GEOMETRY_SETTINGS_KEY = "treatment_type_management/geometry"
+_HEADER_STATE_SETTINGS_KEY = "treatment_type_management/header_state"
 
 
 def _session_count_phrase(count: int) -> str:
@@ -53,8 +60,13 @@ class TreatmentTypeManagementDialog(QDialog):
             QAbstractItemView.SelectionMode.SingleSelection
         )
         self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table_view.horizontalHeader().setStretchLastSection(True)
+        header = self._table_view.horizontalHeader()
         self._table_view.verticalHeader().setVisible(False)
+        if not restore_header_state(header, _HEADER_STATE_SETTINGS_KEY):
+            self._table_view.resizeColumnsToContents()
+            # Beschreibung is the one open-ended, variable-length column.
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.sectionResized.connect(self._save_header_state)
         self._table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
         )
@@ -178,6 +190,11 @@ class TreatmentTypeManagementDialog(QDialog):
             show_error(str(exc), parent=self)
             return
         self._reload()
+
+    def _save_header_state(self) -> None:
+        save_header_state(
+            self._table_view.horizontalHeader(), _HEADER_STATE_SETTINGS_KEY
+        )
 
     def done(self, result: int) -> None:
         save_geometry(self, _GEOMETRY_SETTINGS_KEY)

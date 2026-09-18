@@ -10,7 +10,9 @@ from pathlib import Path
 # it must be imported explicitly here to end up in a PyInstaller-frozen build.
 import sqlalchemy.dialects.sqlite.pysqlcipher  # noqa: F401
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, event
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -170,14 +172,15 @@ def find_data_drive() -> Path:
     return found
 
 
-def _alembic_config(connection) -> Config:
+def _alembic_config(connection: Connection | None = None) -> Config:
     # Resolved relative to the repo root for now; PyInstaller builds (step 7)
     # will need to bundle alembic.ini/alembic/ as data files and resolve this
     # via sys._MEIPASS instead.
     repo_root = Path(__file__).resolve().parents[2]
     alembic_cfg = Config(str(repo_root / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(repo_root / "alembic"))
-    alembic_cfg.attributes["connection"] = connection
+    if connection is not None:
+        alembic_cfg.attributes["connection"] = connection
     return alembic_cfg
 
 
@@ -243,12 +246,43 @@ def set_up_data_drive(drive_root: Path, password: str) -> Engine:
                 TreatmentType(name=name) for name in DEFAULT_TREATMENT_TYPE_NAMES
             )
             session.commit()
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, StorageError) as exc:
+        # Never leave a half-set-up drive behind: a failure here must look,
+        # from the outside, exactly like set_up_data_drive() was never
+        # called. apply_migrations() already wraps its own failures as
+        # StorageError, which SQLAlchemyError alone would not catch.
         engine.dispose()
+        identifier_path.unlink(missing_ok=True)
+        db_path.unlink(missing_ok=True)
+        if isinstance(exc, StorageError):
+            raise
         raise StorageError("Datenplatte konnte nicht eingerichtet werden.") from exc
 
     config.set_last_known_drive_path(drive_root)
     return engine
+
+
+def list_available_drives() -> list[Path]:
+    """Currently assigned Windows drive letters, as candidate roots to set up."""
+    return [Path(f"{letter}:\\") for letter in _assigned_drive_letters()]
+
+
+def is_removable_drive(drive_root: Path) -> bool:
+    """True if Windows reports this drive's media as removable (e.g. a USB stick).
+
+    Note: many external USB hard drives are reported as DRIVE_FIXED rather
+    than DRIVE_REMOVABLE by Windows - this is a media-type check, not a
+    "is it plugged in via USB" check. Used only to show a dismissible
+    warning during setup, never to block a choice outright.
+    """
+    drive_removable = 2
+    root = f"{str(drive_root)[0]}:\\"
+    return ctypes.windll.kernel32.GetDriveTypeW(root) == drive_removable  # type: ignore[attr-defined]
+
+
+def drive_already_set_up(drive_root: Path) -> bool:
+    """True if drive_root already carries a valid Kennungsdatei."""
+    return _read_identifier_file(drive_root) is not None
 
 
 def apply_migrations(engine: Engine) -> None:
@@ -262,3 +296,16 @@ def apply_migrations(engine: Engine) -> None:
             command.upgrade(_alembic_config(connection), "head")
     except SQLAlchemyError as exc:
         raise StorageError("Datenbank konnte nicht aktualisiert werden.") from exc
+
+
+def has_pending_migrations(engine: Engine) -> bool:
+    """True if the database is not yet at the latest Alembic revision.
+
+    Used to decide, when the mandatory pre-migration backup fails
+    everywhere, whether that is fatal (a migration is about to run
+    unprotected) or just a visible warning (nothing is about to change).
+    """
+    with engine.connect() as connection:
+        current_revision = MigrationContext.configure(connection).get_current_revision()
+    script_directory = ScriptDirectory.from_config(_alembic_config())
+    return current_revision != script_directory.get_current_head()

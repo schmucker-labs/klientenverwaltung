@@ -161,3 +161,13 @@ Service-Fehler abfangen und die deutsche Meldung in einer QMessageBox zeigen. Ni
 Ausreichend große Schrift und Klickflächen. Der Anwender ist kein Techniker und sitzt eventuell nicht optimal vor dem Bildschirm.
 Keine Geschäftslogik in der Oberfläche. Wenn Claude Code anfängt, im Fenstercode zu validieren, gehört das in die Services.
 Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnvoller Reihenfolge durch die Felder. Bei Dateneingabe spart das spürbar Zeit.
+
+- Jedes Fenster und jeder Dialog merkt sich Fenstergröße, Position, Spaltenbreiten,
+  Sortierung und Splitter-Aufteilung über QSettings unter einem eigenen Schlüssel.
+  Dafür die gemeinsame Hilfsfunktion in ui/ verwenden, nicht pro Dialog neu bauen.
+  Gilt auch für jeden neu hinzukommenden Dialog.
+- Beim ersten Öffnen ohne gespeicherte Werte: sinnvolle Standardgröße, bei der alle
+  Inhalte lesbar sind. Tabellenspalten einmalig am Inhalt ausrichten. Gespeicherte
+  Werte, die unbrauchbar sind (z. B. Höhe 0, Fenster außerhalb des Bildschirms),
+  werden verworfen und durch die Standardwerte ersetzt.
+- Mindestbreite pro Tabellenspalte, damit Spalten nicht auf null gezogen werden können.
