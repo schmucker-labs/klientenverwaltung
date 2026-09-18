@@ -1,3 +1,4 @@
+from PySide6.QtCore import QByteArray, QModelIndex, QSettings, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -7,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSplitter,
     QTableView,
     QTextEdit,
     QVBoxLayout,
@@ -27,9 +29,13 @@ from klientenverwaltung.ui.dialogs import (
 )
 from klientenverwaltung.ui.optional_date_edit import OptionalDateEdit
 from klientenverwaltung.ui.session_dialog import SessionDialog
-from klientenverwaltung.ui.session_table_model import SessionTableModel
+from klientenverwaltung.ui.session_note_dialog import SessionNoteDialog
+from klientenverwaltung.ui.session_table_model import NOTE_COLUMN, SessionTableModel
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _SALUTATION_SUGGESTIONS = ["", "Herr", "Frau", "Herr Dr.", "Frau Dr."]
+_GEOMETRY_SETTINGS_KEY = "client_detail/geometry"
+_SPLITTER_SETTINGS_KEY = "client_detail/splitter_state"
 
 
 class ClientDetailDialog(QDialog):
@@ -49,6 +55,7 @@ class ClientDetailDialog(QDialog):
 
         self.resize(700, 800)
         self.setModal(True)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         self._build_ui()
 
@@ -76,12 +83,8 @@ class ClientDetailDialog(QDialog):
         self._city_edit = QLineEdit(self)
         self._phone_edit = QLineEdit(self)
         self._email_edit = QLineEdit(self)
-        self._concern_edit = QTextEdit(self)
-        self._concern_edit.setFixedHeight(60)
         self._referral_source_edit = QLineEdit(self)
         self._consent_date_edit = OptionalDateEdit(self)
-        self._notes_edit = QTextEdit(self)
-        self._notes_edit.setFixedHeight(80)
 
         form = QFormLayout()
         form.addRow("Anrede:", self._salutation_combo)
@@ -93,10 +96,8 @@ class ClientDetailDialog(QDialog):
         form.addRow("Ort:", self._city_edit)
         form.addRow("Telefon:", self._phone_edit)
         form.addRow("E-Mail:", self._email_edit)
-        form.addRow("Anliegen:", self._concern_edit)
         form.addRow("Aufmerksam geworden durch:", self._referral_source_edit)
         form.addRow("Einwilligung vom:", self._consent_date_edit)
-        form.addRow("Notizen:", self._notes_edit)
 
         self._save_client_button = QPushButton("Speichern", self)
         self._save_client_button.setDefault(True)
@@ -105,13 +106,63 @@ class ClientDetailDialog(QDialog):
         save_row.addStretch()
         save_row.addWidget(self._save_client_button)
 
+        self._concern_edit = QTextEdit(self)
+        self._notes_edit = QTextEdit(self)
+
+        self._splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self._splitter.setChildrenCollapsible(False)
+        # Default handle width (4px) is too thin to reliably grab; the
+        # target user is not a technician and may not sit optimally in
+        # front of the screen, so click targets need to be generous.
+        self._splitter.setHandleWidth(10)
+        self._splitter.addWidget(
+            self._build_labeled_panel("Anliegen:", self._concern_edit)
+        )
+        self._splitter.addWidget(self._build_sessions_panel())
+        self._splitter.addWidget(
+            self._build_labeled_panel("Notizen:", self._notes_edit)
+        )
+        for pane_index in range(self._splitter.count()):
+            self._splitter.setStretchFactor(pane_index, 1)
+        self._splitter.setSizes([120, 400, 120])
+        self._splitter.splitterMoved.connect(self._save_splitter_state)
+        self._restore_splitter_state()
+
+        close_button = QPushButton("Schließen", self)
+        close_button.clicked.connect(self.reject)
+        close_row = QHBoxLayout()
+        close_row.addStretch()
+        close_row.addWidget(close_button)
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addLayout(save_row)
+        layout.addWidget(self._splitter, 1)
+        layout.addLayout(close_row)
+
+    @staticmethod
+    def _build_labeled_panel(label_text: str, content: QWidget) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QLabel(label_text, panel))
+        layout.addWidget(content)
+        return panel
+
+    def _build_sessions_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(QLabel("<b>Sitzungen</b>", panel))
+
         self._new_session_hint = QLabel(
             "Sitzungen können hinzugefügt werden, nachdem der Klient gespeichert wurde.",
-            self,
+            panel,
         )
+        layout.addWidget(self._new_session_hint)
 
         self._session_table_model = SessionTableModel()
-        self._session_table_view = QTableView(self)
+        self._session_table_view = QTableView(panel)
         self._session_table_view.setModel(self._session_table_model)
         self._session_table_view.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -124,13 +175,16 @@ class ClientDetailDialog(QDialog):
         )
         self._session_table_view.horizontalHeader().setStretchLastSection(True)
         self._session_table_view.verticalHeader().setVisible(False)
+        self._session_table_view.setColumnWidth(NOTE_COLUMN, 40)
         self._session_table_view.selectionModel().selectionChanged.connect(
             self._update_session_button_states
         )
+        self._session_table_view.clicked.connect(self._on_session_table_clicked)
+        layout.addWidget(self._session_table_view)
 
-        self._new_session_button = QPushButton("Neue Sitzung", self)
-        self._edit_session_button = QPushButton("Bearbeiten", self)
-        self._delete_session_button = QPushButton("Löschen", self)
+        self._new_session_button = QPushButton("Neue Sitzung", panel)
+        self._edit_session_button = QPushButton("Bearbeiten", panel)
+        self._delete_session_button = QPushButton("Löschen", panel)
         self._edit_session_button.setEnabled(False)
         self._delete_session_button.setEnabled(False)
         self._new_session_button.clicked.connect(self._on_new_session_clicked)
@@ -142,21 +196,26 @@ class ClientDetailDialog(QDialog):
         session_button_row.addWidget(self._new_session_button)
         session_button_row.addWidget(self._edit_session_button)
         session_button_row.addWidget(self._delete_session_button)
-
-        close_button = QPushButton("Schließen", self)
-        close_button.clicked.connect(self.reject)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(close_button)
-
-        layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addLayout(save_row)
-        layout.addWidget(QLabel("<b>Sitzungen</b>", self))
-        layout.addWidget(self._new_session_hint)
-        layout.addWidget(self._session_table_view)
         layout.addLayout(session_button_row)
-        layout.addLayout(close_row)
+
+        return panel
+
+    def _restore_splitter_state(self) -> None:
+        state = QSettings().value(_SPLITTER_SETTINGS_KEY)
+        if isinstance(state, QByteArray):
+            self._splitter.restoreState(state)
+
+    def _save_splitter_state(self) -> None:
+        QSettings().setValue(_SPLITTER_SETTINGS_KEY, self._splitter.saveState())
+
+    def done(self, result: int) -> None:
+        # done() is the single choke point every close path (accept, the
+        # custom reject() above, the window's X button) funnels through, so
+        # this is where size+position get persisted, not scattered across
+        # each of those paths.
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        self._save_splitter_state()
+        super().done(result)
 
     def _populate_form(self, client: Client) -> None:
         self._salutation_combo.setCurrentText(client.salutation or "")
@@ -251,7 +310,22 @@ class ClientDetailDialog(QDialog):
 
     def _on_edit_session_clicked(self) -> None:
         session = self._selected_session()
-        if session is None or self._client_id is None:
+        if session is None:
+            return
+        self._edit_session(session)
+
+    def _on_session_table_clicked(self, index: QModelIndex) -> None:
+        if not index.isValid() or index.column() != NOTE_COLUMN:
+            return
+        session = self._session_table_model.session_at(index.row())
+        if not session.notes:
+            return
+        dialog = SessionNoteDialog(session.notes, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._edit_session(session)
+
+    def _edit_session(self, session: TreatmentSession) -> None:
+        if self._client_id is None:
             return
         dialog = SessionDialog(
             self._treatment_type_service,

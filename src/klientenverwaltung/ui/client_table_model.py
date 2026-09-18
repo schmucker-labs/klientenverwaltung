@@ -1,6 +1,9 @@
+from collections.abc import Callable
+from datetime import datetime
+
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
-from klientenverwaltung.services import ClientListEntry
+from klientenverwaltung.services import ClientListEntry, UpcomingAppointment
 
 COLUMN_TITLES = (
     "Anrede",
@@ -11,6 +14,53 @@ COLUMN_TITLES = (
     "Letzte Sitzung",
     "Nächster Termin",
 )
+
+
+def _format_appointment(appointment: UpcomingAppointment) -> str:
+    return (
+        f"{appointment.date.strftime('%d.%m.%Y %H:%M')} Uhr, "
+        f"{appointment.duration_minutes} Min., {appointment.treatment_type_name}"
+    )
+
+
+def _format_next_appointment(appointments: list[UpcomingAppointment]) -> str:
+    if not appointments:
+        return ""
+    text = _format_appointment(appointments[0])
+    if len(appointments) > 1:
+        text += f" (+{len(appointments) - 1})"
+    return text
+
+
+def _next_appointment_tooltip(appointments: list[UpcomingAppointment]) -> str | None:
+    if not appointments:
+        return None
+    return "\n".join(_format_appointment(a) for a in appointments)
+
+
+def _text_key(value: str | None) -> str:
+    return (value or "").casefold()
+
+
+def _date_key(value: datetime | None) -> tuple[bool, datetime]:
+    """None-safe sort key: entries without a date sort after ones that have one."""
+    return (value is None, value or datetime.min)
+
+
+def _next_appointment_key(entry: ClientListEntry) -> tuple[bool, datetime]:
+    appointments = entry.upcoming_appointments
+    return (not appointments, appointments[0].date if appointments else datetime.min)
+
+
+_SORT_KEYS: dict[int, Callable[[ClientListEntry], object]] = {
+    0: lambda entry: _text_key(entry.salutation),
+    1: lambda entry: _text_key(entry.last_name),
+    2: lambda entry: _text_key(entry.first_name),
+    3: lambda entry: _text_key(entry.city),
+    4: lambda entry: _text_key(entry.phone),
+    5: lambda entry: _date_key(entry.last_session_date),
+    6: _next_appointment_key,
+}
 
 
 class ClientTableModel(QAbstractTableModel):
@@ -52,10 +102,18 @@ class ClientTableModel(QAbstractTableModel):
     def data(
         self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole
     ) -> object:
-        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
+        if not index.isValid():
             return None
         entry = self._entries[index.row()]
         column = index.column()
+
+        if role == Qt.ItemDataRole.ToolTipRole:
+            if column == 6:
+                return _next_appointment_tooltip(entry.upcoming_appointments)
+            return None
+
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
         if column == 0:
             return entry.salutation or ""
         if column == 1:
@@ -73,9 +131,15 @@ class ClientTableModel(QAbstractTableModel):
                 else ""
             )
         if column == 6:
-            return (
-                entry.next_appointment_date.strftime("%d.%m.%Y")
-                if entry.next_appointment_date
-                else ""
-            )
+            return _format_next_appointment(entry.upcoming_appointments)
         return None
+
+    def sort(
+        self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder
+    ) -> None:
+        key = _SORT_KEYS.get(column)
+        if key is None:
+            return
+        self.layoutAboutToBeChanged.emit()
+        self._entries.sort(key=key, reverse=order == Qt.SortOrder.DescendingOrder)
+        self.layoutChanged.emit()

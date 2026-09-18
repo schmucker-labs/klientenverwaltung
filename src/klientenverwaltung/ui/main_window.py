@@ -1,3 +1,4 @@
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QMainWindow
 
 from klientenverwaltung.services import (
@@ -9,6 +10,9 @@ from klientenverwaltung.ui.client_list_widget import ClientListWidget
 from klientenverwaltung.ui.treatment_type_management_dialog import (
     TreatmentTypeManagementDialog,
 )
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+
+_GEOMETRY_SETTINGS_KEY = "main_window/geometry"
 
 
 class MainWindow(QMainWindow):
@@ -29,6 +33,7 @@ class MainWindow(QMainWindow):
             )
         )
         self._build_menu()
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
     def _build_menu(self) -> None:
         settings_menu = self.menuBar().addMenu("Einstellungen")
@@ -40,3 +45,7 @@ class MainWindow(QMainWindow):
             self._treatment_type_service, parent=self
         )
         dialog.exec()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().closeEvent(event)

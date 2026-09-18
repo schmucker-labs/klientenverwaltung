@@ -5,8 +5,9 @@ from PySide6.QtGui import QFont
 
 from klientenverwaltung.models import TreatmentSession
 
-COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Notizen")
-_NOTES_PREVIEW_LENGTH = 60
+COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Notiz")
+NOTE_COLUMN = 3
+_NOTE_ICON = "\U0001f441"  # eye symbol
 
 
 class SessionTableModel(QAbstractTableModel):
@@ -51,6 +52,7 @@ class SessionTableModel(QAbstractTableModel):
         if not index.isValid():
             return None
         session = self._sessions[index.row()]
+        column = index.column()
 
         if role == Qt.ItemDataRole.FontRole:
             if session.date > datetime.now():
@@ -59,18 +61,17 @@ class SessionTableModel(QAbstractTableModel):
                 return font
             return None
 
+        if role == Qt.ItemDataRole.TextAlignmentRole and column == NOTE_COLUMN:
+            return Qt.AlignmentFlag.AlignCenter
+
         if role != Qt.ItemDataRole.DisplayRole:
             return None
-        column = index.column()
         if column == 0:
             return session.date.strftime("%d.%m.%Y %H:%M")
         if column == 1:
             return session.treatment_type.name
         if column == 2:
-            return str(session.duration_minutes) if session.duration_minutes else ""
-        if column == 3:
-            notes = session.notes or ""
-            if len(notes) > _NOTES_PREVIEW_LENGTH:
-                return notes[:_NOTES_PREVIEW_LENGTH] + "…"
-            return notes
+            return str(session.duration_minutes)
+        if column == NOTE_COLUMN:
+            return _NOTE_ICON if session.notes else ""
         return None

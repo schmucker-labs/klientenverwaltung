@@ -30,7 +30,7 @@ def db_session(engine: Engine) -> Iterator[Session]:
         yield session
 
 
-def test_get_last_and_next_session_dates_treats_now_as_future(
+def test_get_last_session_dates_excludes_sessions_at_or_after_now(
     db_session: Session,
 ) -> None:
     client = Client(first_name="Anna", last_name="Muster")
@@ -51,35 +51,68 @@ def test_get_last_and_next_session_dates_treats_now_as_future(
         date=now,
         duration_minutes=60,
     )
-    future = TreatmentSession(
-        client_id=client.id,
-        treatment_type_id=treatment_type.id,
-        date=datetime(2026, 6, 15, 12, 0, 1),
-        duration_minutes=60,
-    )
-    db_session.add_all([past, exactly_now, future])
+    db_session.add_all([past, exactly_now])
     db_session.commit()
 
-    result = TreatmentSessionRepository(db_session).get_last_and_next_session_dates(
-        now=now
-    )
+    result = TreatmentSessionRepository(db_session).get_last_session_dates(now=now)
 
-    last_date, next_date = result[client.id]
-    assert last_date == past.date
-    assert next_date == exactly_now.date, (
-        "a session at exactly 'now' counts as upcoming"
-    )
+    assert result[client.id] == past.date, "a session at exactly 'now' is not past"
 
 
-def test_get_last_and_next_session_dates_none_when_no_sessions(
+def test_get_last_session_dates_absent_when_no_past_sessions(
     db_session: Session,
 ) -> None:
     client = Client(first_name="Anna", last_name="Muster")
     db_session.add(client)
     db_session.commit()
 
-    result = TreatmentSessionRepository(db_session).get_last_and_next_session_dates(
-        [client.id]
+    result = TreatmentSessionRepository(db_session).get_last_session_dates([client.id])
+
+    assert result == {}
+
+
+def test_get_upcoming_sessions_includes_session_at_exactly_now_soonest_first(
+    db_session: Session,
+) -> None:
+    client = Client(first_name="Anna", last_name="Muster")
+    treatment_type = TreatmentType(name="Chakrenausgleich")
+    db_session.add_all([client, treatment_type])
+    db_session.flush()
+
+    now = datetime(2026, 6, 15, 12, 0)
+    past = TreatmentSession(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 6, 15, 11, 59, 59),
+        duration_minutes=60,
     )
+    exactly_now = TreatmentSession(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=now,
+        duration_minutes=60,
+    )
+    later = TreatmentSession(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 6, 20, 9, 0),
+        duration_minutes=30,
+    )
+    db_session.add_all([past, exactly_now, later])
+    db_session.commit()
+
+    result = TreatmentSessionRepository(db_session).get_upcoming_sessions(now=now)
+
+    assert [s.id for s in result[client.id]] == [exactly_now.id, later.id]
+
+
+def test_get_upcoming_sessions_absent_when_no_future_sessions(
+    db_session: Session,
+) -> None:
+    client = Client(first_name="Anna", last_name="Muster")
+    db_session.add(client)
+    db_session.commit()
+
+    result = TreatmentSessionRepository(db_session).get_upcoming_sessions([client.id])
 
     assert result == {}

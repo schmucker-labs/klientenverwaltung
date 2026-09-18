@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from klientenverwaltung.models import TreatmentSession
@@ -72,27 +72,38 @@ class TreatmentSessionRepository:
                 return candidate
         return None
 
-    def get_last_and_next_session_dates(
+    def get_last_session_dates(
         self, client_ids: Sequence[int] | None = None, *, now: datetime | None = None
-    ) -> dict[int, tuple[datetime | None, datetime | None]]:
-        """Per client: (most recent past session date, next future session date).
-
-        Both come from one grouped query with conditional aggregation, not one
-        query per client and not two separate queries.
-        """
+    ) -> dict[int, datetime]:
+        """Per client: most recent past session date (clients with none are absent)."""
         reference = now if now is not None else datetime.now()
-        last_session_date = func.max(
-            case((TreatmentSession.date < reference, TreatmentSession.date))
+        stmt = (
+            select(TreatmentSession.client_id, func.max(TreatmentSession.date))
+            .where(TreatmentSession.date < reference)
+            .group_by(TreatmentSession.client_id)
         )
-        next_appointment_date = func.min(
-            case((TreatmentSession.date >= reference, TreatmentSession.date))
-        )
-        stmt = select(
-            TreatmentSession.client_id, last_session_date, next_appointment_date
-        ).group_by(TreatmentSession.client_id)
         if client_ids is not None:
             stmt = stmt.where(TreatmentSession.client_id.in_(client_ids))
-        return {
-            client_id: (last_date, next_date)
-            for client_id, last_date, next_date in self._session.execute(stmt).all()
-        }
+        return dict(self._session.execute(stmt).all())
+
+    def get_upcoming_sessions(
+        self, client_ids: Sequence[int] | None = None, *, now: datetime | None = None
+    ) -> dict[int, list[TreatmentSession]]:
+        """Per client: future sessions (date >= now), soonest first.
+
+        Eager-loads treatment_type so callers can read the name after this
+        repository's session/transaction has ended.
+        """
+        reference = now if now is not None else datetime.now()
+        stmt = (
+            select(TreatmentSession)
+            .where(TreatmentSession.date >= reference)
+            .options(joinedload(TreatmentSession.treatment_type))
+            .order_by(TreatmentSession.date)
+        )
+        if client_ids is not None:
+            stmt = stmt.where(TreatmentSession.client_id.in_(client_ids))
+        upcoming: dict[int, list[TreatmentSession]] = {}
+        for session in self._session.scalars(stmt):
+            upcoming.setdefault(session.client_id, []).append(session)
+        return upcoming

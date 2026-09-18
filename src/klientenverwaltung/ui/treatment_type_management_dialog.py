@@ -17,6 +17,9 @@ from klientenverwaltung.ui.dialogs import (
 )
 from klientenverwaltung.ui.treatment_type_edit_dialog import TreatmentTypeEditDialog
 from klientenverwaltung.ui.treatment_type_table_model import TreatmentTypeTableModel
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+
+_GEOMETRY_SETTINGS_KEY = "treatment_type_management/geometry"
 
 
 def _session_count_phrase(count: int) -> str:
@@ -38,6 +41,7 @@ class TreatmentTypeManagementDialog(QDialog):
         self.setWindowTitle("Behandlungsarten verwalten")
         self.resize(600, 500)
         self.setModal(True)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         self._table_model = TreatmentTypeTableModel()
         self._table_view = QTableView(self)
@@ -174,3 +178,7 @@ class TreatmentTypeManagementDialog(QDialog):
             show_error(str(exc), parent=self)
             return
         self._reload()
+
+    def done(self, result: int) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().done(result)

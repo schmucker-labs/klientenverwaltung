@@ -20,10 +20,12 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _DEFAULT_DURATION_MINUTES = 60
 _MIN_DURATION_MINUTES = 5
 _MAX_DURATION_MINUTES = 480
+_GEOMETRY_SETTINGS_KEY = "session_dialog/geometry"
 
 
 class SessionDialog(QDialog):
@@ -45,6 +47,7 @@ class SessionDialog(QDialog):
             "Sitzung bearbeiten" if session is not None else "Neue Sitzung"
         )
         self.setModal(True)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         self._date_edit = QDateTimeEdit(self)
         self._date_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
@@ -147,3 +150,7 @@ class SessionDialog(QDialog):
             super().reject()
             return
         self._on_save_clicked()
+
+    def done(self, result: int) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().done(result)

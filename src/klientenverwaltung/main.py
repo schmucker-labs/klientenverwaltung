@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
@@ -43,6 +44,11 @@ def _open_database_or_none(db_path: Path) -> Engine | None:
 
 
 def main() -> int:
+    # Only for QSettings (window geometry, column widths, splitter sizes) -
+    # never client data, which stays on the encrypted USB-Datenplatte.
+    QCoreApplication.setOrganizationName("Klientenverwaltung")
+    QCoreApplication.setApplicationName("Klientenverwaltung")
+
     app = QApplication(sys.argv)
     font = app.font()
     font.setPointSize(font.pointSize() + 2)

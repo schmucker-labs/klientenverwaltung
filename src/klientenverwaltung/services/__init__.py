@@ -1,4 +1,8 @@
-from klientenverwaltung.services.client_service import ClientListEntry, ClientService
+from klientenverwaltung.services.client_service import (
+    ClientListEntry,
+    ClientService,
+    UpcomingAppointment,
+)
 from klientenverwaltung.services.errors import (
     ConflictError,
     NotFoundError,
@@ -20,5 +24,6 @@ __all__ = [
     "SessionOverlapError",
     "TreatmentSessionService",
     "TreatmentTypeService",
+    "UpcomingAppointment",
     "ValidationError",
 ]

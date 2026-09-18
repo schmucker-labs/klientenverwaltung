@@ -42,6 +42,15 @@ def _normalize_word(word: str, *, is_first: bool) -> str:
 
 
 @dataclass(frozen=True)
+class UpcomingAppointment:
+    """One future session, as needed to display it in the client list."""
+
+    date: datetime
+    duration_minutes: int
+    treatment_type_name: str
+
+
+@dataclass(frozen=True)
 class ClientListEntry:
     """One row of the client list: exactly the fields that screen shows."""
 
@@ -53,7 +62,7 @@ class ClientListEntry:
     phone: str | None
     archived: bool
     last_session_date: datetime | None
-    next_appointment_date: datetime | None
+    upcoming_appointments: list[UpcomingAppointment]
 
 
 class ClientService:
@@ -125,9 +134,10 @@ class ClientService:
             clients = ClientRepository(session).list(
                 include_archived=include_archived, search=search
             )
-            session_dates = TreatmentSessionRepository(
-                session
-            ).get_last_and_next_session_dates([client.id for client in clients])
+            client_ids = [client.id for client in clients]
+            session_repo = TreatmentSessionRepository(session)
+            last_session_dates = session_repo.get_last_session_dates(client_ids)
+            upcoming_by_client = session_repo.get_upcoming_sessions(client_ids)
             return [
                 ClientListEntry(
                     id=client.id,
@@ -137,8 +147,15 @@ class ClientService:
                     city=client.city,
                     phone=client.phone,
                     archived=client.archived,
-                    last_session_date=session_dates.get(client.id, (None, None))[0],
-                    next_appointment_date=session_dates.get(client.id, (None, None))[1],
+                    last_session_date=last_session_dates.get(client.id),
+                    upcoming_appointments=[
+                        UpcomingAppointment(
+                            date=s.date,
+                            duration_minutes=s.duration_minutes,
+                            treatment_type_name=s.treatment_type.name,
+                        )
+                        for s in upcoming_by_client.get(client.id, [])
+                    ],
                 )
                 for client in clients
             ]

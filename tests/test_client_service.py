@@ -213,9 +213,9 @@ def test_list_clients_with_last_session_reports_latest_past_date_per_client(
     }
 
     assert entries[client.id].last_session_date == latest.date
-    assert entries[client.id].next_appointment_date is None
+    assert entries[client.id].upcoming_appointments == []
     assert entries[other_client.id].last_session_date is None
-    assert entries[other_client.id].next_appointment_date is None
+    assert entries[other_client.id].upcoming_appointments == []
 
 
 def test_list_clients_with_last_session_separates_next_appointment_from_last_session(
@@ -234,7 +234,7 @@ def test_list_clients_with_last_session_separates_next_appointment_from_last_ses
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2999, 1, 1, 10, 0),
-        duration_minutes=60,
+        duration_minutes=45,
     )
     far_future = treatment_session_service.create_session(
         client_id=client.id,
@@ -246,7 +246,9 @@ def test_list_clients_with_last_session_separates_next_appointment_from_last_ses
     entries = {
         entry.id: entry for entry in client_service.list_clients_with_last_session()
     }
+    upcoming = entries[client.id].upcoming_appointments
 
     assert entries[client.id].last_session_date == far_past.date
-    assert entries[client.id].next_appointment_date == near_future.date
-    assert entries[client.id].next_appointment_date != far_future.date
+    assert [a.date for a in upcoming] == [near_future.date, far_future.date]
+    assert upcoming[0].duration_minutes == 45
+    assert upcoming[0].treatment_type_name == treatment_type.name

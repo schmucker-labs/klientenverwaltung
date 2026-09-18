@@ -1,4 +1,4 @@
-from PySide6.QtCore import QModelIndex, QTimer
+from PySide6.QtCore import QByteArray, QModelIndex, QSettings, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -22,6 +22,8 @@ from klientenverwaltung.ui.client_table_model import ClientTableModel
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 
 SEARCH_DEBOUNCE_MS = 250
+_MIN_COLUMN_WIDTH = 30
+_HEADER_STATE_SETTINGS_KEY = "client_list/header_state"
 
 
 class ClientListWidget(QWidget):
@@ -52,9 +54,15 @@ class ClientListWidget(QWidget):
             QAbstractItemView.SelectionMode.SingleSelection
         )
         self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table_view.horizontalHeader().setStretchLastSection(True)
+        self._table_view.setSortingEnabled(True)
+        header = self._table_view.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setMinimumSectionSize(_MIN_COLUMN_WIDTH)
         self._table_view.verticalHeader().setVisible(False)
         self._table_view.setColumnWidth(0, 80)
+        self._restore_header_state()
+        header.sectionResized.connect(self._save_header_state)
+        header.sortIndicatorChanged.connect(self._save_header_state)
 
         self._new_button = QPushButton("Neu", self)
         self._edit_button = QPushButton("Bearbeiten", self)
@@ -98,6 +106,22 @@ class ClientListWidget(QWidget):
 
         self._reload()
 
+    def _restore_header_state(self) -> None:
+        state = QSettings().value(_HEADER_STATE_SETTINGS_KEY)
+        if isinstance(state, QByteArray):
+            self._table_view.horizontalHeader().restoreState(state)
+
+    def _save_header_state(self) -> None:
+        state = self._table_view.horizontalHeader().saveState()
+        QSettings().setValue(_HEADER_STATE_SETTINGS_KEY, state)
+
+    def _apply_current_sort(self) -> None:
+        """Re-sort after reloading entries: a model reset forgets prior sort()."""
+        header = self._table_view.horizontalHeader()
+        section = header.sortIndicatorSection()
+        if section >= 0:
+            self._table_view.sortByColumn(section, header.sortIndicatorOrder())
+
     def _selected_entry(self) -> ClientListEntry | None:
         rows = self._table_view.selectionModel().selectedRows()
         if len(rows) != 1:
@@ -123,6 +147,7 @@ class ClientListWidget(QWidget):
             include_archived=self._show_archived_checkbox.isChecked(), search=search
         )
         self._table_model.set_entries(entries)
+        self._apply_current_sort()
         self._update_button_states()
 
     def _open_detail_dialog(self, client_id: int | None) -> None:
