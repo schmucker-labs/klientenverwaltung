@@ -2,8 +2,10 @@ from collections.abc import Callable
 from datetime import datetime
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtGui import QColor, QFont
 
 from klientenverwaltung.services import ClientListEntry, UpcomingAppointment
+from klientenverwaltung.ui.theme import LIGHT_PALETTE
 
 COLUMN_TITLES = (
     "Anrede",
@@ -111,6 +113,14 @@ class ClientTableModel(QAbstractTableModel):
             if column == 6:
                 return _next_appointment_tooltip(entry.upcoming_appointments)
             return None
+
+        if role == Qt.ItemDataRole.FontRole and entry.archived:
+            font = QFont()
+            font.setItalic(True)
+            return font
+
+        if role == Qt.ItemDataRole.ForegroundRole and entry.archived:
+            return QColor(LIGHT_PALETTE.text_archived)
 
         if role != Qt.ItemDataRole.DisplayRole:
             return None

@@ -16,6 +16,7 @@ from klientenverwaltung.ui.dialogs import ask_retry, ask_retry_or_setup, show_er
 from klientenverwaltung.ui.main_window import MainWindow
 from klientenverwaltung.ui.password_dialog import ask_for_password
 from klientenverwaltung.ui.setup_wizard import SetupWizard
+from klientenverwaltung.ui.theme import apply_theme_mode, load_theme_mode
 
 
 def _open_database_or_none(db_path: Path) -> Engine | None:
@@ -116,6 +117,7 @@ def main() -> int:
     font = app.font()
     font.setPointSize(font.pointSize() + 2)
     app.setFont(font)
+    apply_theme_mode(load_theme_mode())
 
     acquired = _acquire_drive_and_engine()
     if acquired is None:

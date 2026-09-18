@@ -187,3 +187,16 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
   abgegeben, bis zur Mindestbreite. Dabei darf keine Spalte auf Stretch stehen, sonst
   verrutscht die Zuordnung der Trenner (siehe oben). Beim automatischen Anpassen kein
   Speichern in QSettings auslösen.
+  - Farben nie direkt im UI-Code, sondern ausschließlich über die zentral definierten
+  Farbvariablen des aktiven Themes. Jedes Theme definiert vollständig: Hintergrund,
+  Flächen, Text, Sekundärtext, Akzent, Sekundärakzent, Linien, Hover, markierte Zeile
+  (Hintergrund + Text), Fehler-/Warnfarbe, deaktivierte Elemente, Fokusrahmen,
+  archivierte Einträge. Stylesheets setzen nur Farben, nie Abstände oder Schriftgrößen.
+  - Qt-Stylesheets ersetzen den nativen Windows-Stil eines Elements vollständig, sobald
+  sie es anfassen: Innenabstände, Rundungen und Zustandsdarstellung gehen verloren und
+  müssen ausdrücklich mitgesetzt werden. Für jedes gestylte Element daher auch
+  border-radius, padding, min-height sowie die Zustände hover, pressed, focus und
+  disabled definieren.
+- Fenster-Titelleisten werden nicht angepasst (Windows-Systemelement).
+- Ein Theme-Wechsel muss zur Laufzeit auf alle offenen Fenster und Dialoge wirken,
+  nicht nur auf das Hauptfenster, und ohne Neustart greifen.

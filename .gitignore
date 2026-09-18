@@ -15,6 +15,10 @@ uv-cache/
 build/
 dist/
 *.spec
+# ...except the hand-maintained full-app spec (bundles ui/icons and
+# ui/assets) - a plain `pyinstaller main.py` would otherwise regenerate an
+# unconfigured one and silently drop those data folders from the build.
+!/klientenverwaltung.spec
 
 # SQLite / SQLCipher data files (nie unverschluesselt oder Testdaten committen)
 *.db

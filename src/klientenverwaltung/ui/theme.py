@@ -1,0 +1,325 @@
+"""Central color definitions and light/dark mode switching for the app.
+
+Every color used anywhere in the UI must be a named field on ColorPalette,
+set here and nowhere else. UI code builds a style sheet from a palette via
+build_stylesheet() and never embeds a hex value directly.
+
+The style sheet is applied to the whole QApplication (see apply_theme_mode),
+not to individual windows, so a mode switch reaches every open window and
+dialog immediately, with no restart needed.
+"""
+
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QApplication
+
+# QCheckBox::indicator loses Qt's native checkmark glyph as soon as any of
+# its properties are styled via QSS, so :checked draws this fixed white
+# icon instead. A PNG rather than SVG, so PyInstaller never needs to bundle
+# the Qt SVG plugin just for a checkbox tick.
+_CHECKMARK_ICON_PATH = (Path(__file__).parent / "assets" / "checkmark.png").as_posix()
+
+
+@dataclass(frozen=True)
+class ColorPalette:
+    # Window background, behind every panel.
+    background: str
+    # Menu bar / status bar / table header background.
+    surface_toolbar: str
+    # Table body, dialogs, buttons, cards.
+    surface_panel: str
+    # Text inputs: QLineEdit, QComboBox, QDateEdit, ...
+    surface_input: str
+    # Hover feedback on rows, buttons and menu items.
+    hover: str
+    # Primary text.
+    text: str
+    # De-emphasized text: table header labels, status bar, hints.
+    text_secondary: str
+    # Disabled controls and their labels.
+    text_disabled: str
+    # Archived clients in the client list.
+    text_archived: str
+    # Borders, gridlines, separators.
+    lines: str
+    # Primary brand color: default buttons, links, primary emphasis.
+    accent: str
+    # Secondary brand color: pressed state, minor emphasis.
+    accent_secondary: str
+    # Selected table row background.
+    selection_background: str
+    # Selected table row text.
+    selection_text: str
+    # Error text and borders (e.g. invalid form fields) - deliberately a
+    # true red, distinct from the terracotta accent, so it's never mistaken
+    # for a normal call-to-action color.
+    error: str
+    # Focus ring around the currently focused input.
+    focus: str
+
+
+LIGHT_PALETTE = ColorPalette(
+    background="#F5F1EB",
+    surface_toolbar="#FFFFFF",
+    surface_panel="#FFFFFF",
+    surface_input="#FFFFFF",
+    # Proposed: a shade between background and lines, so hover reads as a
+    # subtle darkening rather than a new surface.
+    hover="#EFE7DB",
+    text="#302C28",
+    text_secondary="#766E65",
+    # Proposed: muted further than text_secondary, low enough contrast to
+    # read as "unavailable" without becoming illegible.
+    text_disabled="#ABA399",
+    # Proposed: same as text_secondary - archived clients are de-emphasized,
+    # not disabled, so they reuse the existing secondary-text role rather
+    # than adding another near-duplicate gray. Combined with italic in the
+    # client list model, matching how inactive treatment types are shown.
+    text_archived="#766E65",
+    lines="#DDD5CA",
+    accent="#A7654F",
+    accent_secondary="#B89A67",
+    # Proposed: a light tint of accent over the background.
+    selection_background="#E7D8CF",
+    # Proposed: reuse normal text - the tinted background alone is enough
+    # to mark the row as selected without needing separate text handling.
+    selection_text="#302C28",
+    # Proposed: a clear red, chosen to sit well apart from the terracotta
+    # accent (more saturated, cooler) so it can't be mistaken for it.
+    error="#C0392B",
+    # Proposed: reuse accent - a colored focus ring in the brand color is
+    # the standard pattern, so it gets its own name here rather than being
+    # written as `accent` at every call site.
+    focus="#A7654F",
+)
+
+DARK_PALETTE = ColorPalette(
+    background="#211C18",
+    surface_toolbar="#29231E",
+    surface_panel="#302923",
+    surface_input="#27211D",
+    hover="#3A312A",
+    text="#E8DED2",
+    text_secondary="#B5A79A",
+    # Proposed: muted further than text_secondary, mirroring the light mode.
+    text_disabled="#6B6055",
+    # Proposed: same as text_secondary, for the same reason as in Light.
+    text_archived="#B5A79A",
+    lines="#453B33",
+    accent="#B86D50",
+    accent_secondary="#B99A68",
+    # Proposed: a stronger tint than Light's, since it sits on a dark panel
+    # rather than a light background.
+    selection_background="#604133",
+    selection_text="#E8DED2",
+    # Proposed: brighter/more saturated than Light's error red, for contrast
+    # against the dark background.
+    error="#E5534A",
+    focus="#B86D50",
+)
+
+
+class ThemeMode(StrEnum):
+    LIGHT = "light"
+    DARK = "dark"
+
+
+_THEME_MODE_SETTINGS_KEY = "appearance/theme_mode"
+
+
+def get_palette(mode: ThemeMode) -> ColorPalette:
+    return LIGHT_PALETTE if mode is ThemeMode.LIGHT else DARK_PALETTE
+
+
+def load_theme_mode() -> ThemeMode:
+    value = QSettings().value(_THEME_MODE_SETTINGS_KEY)
+    return ThemeMode.DARK if value == ThemeMode.DARK.value else ThemeMode.LIGHT
+
+
+def save_theme_mode(mode: ThemeMode) -> None:
+    QSettings().setValue(_THEME_MODE_SETTINGS_KEY, mode.value)
+
+
+def apply_theme_mode(mode: ThemeMode) -> None:
+    """Applies `mode` to the whole application, live.
+
+    Set on QApplication rather than on any one window, so every currently
+    open window and dialog re-polishes with the new colors immediately -
+    no restart, and no per-window wiring needed as new dialogs are added.
+    """
+    app = QApplication.instance()
+    if isinstance(app, QApplication):
+        app.setStyleSheet(build_stylesheet(get_palette(mode)))
+
+
+def build_stylesheet(palette: ColorPalette) -> str:
+    p = palette
+    return f"""
+        QMainWindow, QWidget {{
+            background-color: {p.background};
+            color: {p.text};
+        }}
+
+        QMenuBar {{
+            background-color: {p.surface_toolbar};
+            color: {p.text};
+            border-bottom: 1px solid {p.lines};
+        }}
+        QMenuBar::item {{
+            background: transparent;
+        }}
+        QMenuBar::item:selected {{
+            background-color: {p.hover};
+        }}
+        QMenu {{
+            background-color: {p.surface_panel};
+            color: {p.text};
+            border: 1px solid {p.lines};
+        }}
+        QMenu::item:selected {{
+            background-color: {p.hover};
+        }}
+        QMenu::item:disabled {{
+            color: {p.text_disabled};
+        }}
+
+        QStatusBar {{
+            background-color: {p.surface_toolbar};
+            color: {p.text_secondary};
+            border-top: 1px solid {p.lines};
+        }}
+
+        QLineEdit, QComboBox, QTextEdit, QPlainTextEdit, QAbstractSpinBox {{
+            background-color: {p.surface_input};
+            color: {p.text};
+            border: 1px solid {p.lines};
+            border-radius: 4px;
+            padding: 4px 8px;
+        }}
+        QLineEdit:focus, QComboBox:focus,
+        QTextEdit:focus, QPlainTextEdit:focus, QAbstractSpinBox:focus {{
+            border: 1px solid {p.focus};
+            color: {p.text};
+        }}
+        QLineEdit:disabled, QComboBox:disabled,
+        QTextEdit:disabled, QAbstractSpinBox:disabled {{
+            color: {p.text_disabled};
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 22px;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: {p.surface_panel};
+            color: {p.text};
+            border: 1px solid {p.lines};
+            selection-background-color: {p.selection_background};
+            selection-color: {p.selection_text};
+        }}
+
+        QPushButton {{
+            background-color: {p.surface_panel};
+            color: {p.text};
+            border: 1px solid {p.lines};
+            border-radius: 5px;
+            padding: 6px 14px;
+            min-height: 30px;
+        }}
+        QPushButton:hover {{
+            background-color: {p.hover};
+            color: {p.text};
+        }}
+        QPushButton:pressed {{
+            background-color: {p.accent_secondary};
+            color: {p.surface_panel};
+            border: 1px solid {p.accent_secondary};
+        }}
+        QPushButton:focus {{
+            border: 1px solid {p.focus};
+            color: {p.text};
+        }}
+        QPushButton:disabled {{
+            background-color: {p.surface_panel};
+            color: {p.text_disabled};
+            border: 1px solid {p.lines};
+        }}
+        QPushButton:default {{
+            border: 1px solid {p.accent};
+            color: {p.text};
+        }}
+
+        QCheckBox {{
+            color: {p.text};
+            spacing: 8px;
+        }}
+        QCheckBox:disabled {{
+            color: {p.text_disabled};
+        }}
+        QCheckBox::indicator {{
+            width: 18px;
+            height: 18px;
+            border: 1px solid {p.lines};
+            border-radius: 3px;
+            background-color: {p.surface_input};
+        }}
+        QCheckBox::indicator:hover {{
+            border: 1px solid {p.accent};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {p.accent};
+            border: 1px solid {p.accent};
+            image: url({_CHECKMARK_ICON_PATH});
+        }}
+        QCheckBox::indicator:disabled {{
+            background-color: {p.surface_panel};
+            border: 1px solid {p.lines};
+        }}
+
+        QAbstractItemView {{
+            background-color: {p.surface_panel};
+            alternate-background-color: {p.surface_panel};
+            color: {p.text};
+            selection-background-color: {p.selection_background};
+            selection-color: {p.selection_text};
+            border: 1px solid {p.lines};
+            outline: none;
+        }}
+        QTableView {{
+            gridline-color: {p.lines};
+        }}
+        QAbstractItemView::item {{
+            border: none;
+        }}
+        QAbstractItemView::item:hover {{
+            background-color: {p.hover};
+        }}
+        QAbstractItemView::item:selected {{
+            background-color: {p.selection_background};
+            color: {p.selection_text};
+        }}
+        QAbstractItemView::item:selected:hover {{
+            background-color: {p.selection_background};
+            color: {p.selection_text};
+        }}
+        QHeaderView::section {{
+            background-color: {p.surface_toolbar};
+            color: {p.text_secondary};
+            border: none;
+            border-bottom: 1px solid {p.lines};
+            border-right: 1px solid {p.lines};
+            padding: 4px 6px;
+        }}
+
+        QScrollBar {{
+            background-color: {p.surface_toolbar};
+        }}
+        QScrollBar::handle {{
+            background-color: {p.lines};
+        }}
+        QScrollBar::handle:hover {{
+            background-color: {p.text_secondary};
+        }}
+    """
