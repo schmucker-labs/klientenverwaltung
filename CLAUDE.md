@@ -200,3 +200,8 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
 - Fenster-Titelleisten werden nicht angepasst (Windows-Systemelement).
 - Ein Theme-Wechsel muss zur Laufzeit auf alle offenen Fenster und Dialoge wirken,
   nicht nur auf das Hauptfenster, und ohne Neustart greifen.
+- Stylesheets, die QMenu oder QSplitter anfassen, setzen deren native Darstellung
+  außer Kraft: Menüeinträge verlieren ihren Innenabstand, Splitter-Griffe ihre Breite
+  und werden dadurch unbedienbar. Für QMenu::item immer padding setzen, für
+  QSplitter::handle immer eine Breite/Höhe (ca. 6 px), eine sichtbare Farbe und
+  einen Hover-Zustand.

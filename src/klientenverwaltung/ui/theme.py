@@ -178,6 +178,10 @@ def build_stylesheet(palette: ColorPalette) -> str:
             background-color: {p.surface_panel};
             color: {p.text};
             border: 1px solid {p.lines};
+            padding: 4px;
+        }}
+        QMenu::item {{
+            padding: 6px 20px;
         }}
         QMenu::item:selected {{
             background-color: {p.hover};
@@ -320,6 +324,15 @@ def build_stylesheet(palette: ColorPalette) -> str:
             background-color: {p.lines};
         }}
         QScrollBar::handle:hover {{
+            background-color: {p.text_secondary};
+        }}
+
+        QSplitter::handle {{
+            background-color: {p.lines};
+            height: 6px;
+            width: 6px;
+        }}
+        QSplitter::handle:hover {{
             background-color: {p.text_secondary};
         }}
     """
