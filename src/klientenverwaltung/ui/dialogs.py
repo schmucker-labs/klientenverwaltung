@@ -1,6 +1,21 @@
 from typing import Literal
 
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QMessageBox, QWidget
+
+
+def show_about(
+    program_name: str, version: str, icon: QPixmap, *, parent: QWidget | None = None
+) -> None:
+    """Shows the "Über"/about dialog: name, version, logo, attribution."""
+    box = QMessageBox(parent)
+    box.setWindowTitle(f"Über {program_name}")
+    box.setIconPixmap(icon)
+    box.setText(
+        f"<b>{program_name}</b><br>Version {version}<br><br>Product by R. Schmucker"
+    )
+    box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+    box.exec()
 
 
 def show_error(

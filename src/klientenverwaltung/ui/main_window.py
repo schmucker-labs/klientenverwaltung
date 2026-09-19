@@ -5,7 +5,7 @@ from PySide6.QtGui import QActionGroup, QCloseEvent
 from PySide6.QtWidgets import QLabel, QMainWindow, QToolButton
 from sqlalchemy import Engine
 
-from klientenverwaltung import backup, config
+from klientenverwaltung import __version__, backup, config
 from klientenverwaltung.services import (
     ClientService,
     TreatmentSessionService,
@@ -13,8 +13,8 @@ from klientenverwaltung.services import (
 )
 from klientenverwaltung.ui.backup_management_dialog import BackupManagementDialog
 from klientenverwaltung.ui.client_list_widget import ClientListWidget
-from klientenverwaltung.ui.dialogs import show_error
-from klientenverwaltung.ui.icons import get_icon
+from klientenverwaltung.ui.dialogs import show_about, show_error
+from klientenverwaltung.ui.icons import get_icon, load_svg_pixmap
 from klientenverwaltung.ui.theme import (
     ThemeMode,
     apply_theme_mode,
@@ -82,6 +82,10 @@ class MainWindow(QMainWindow):
             lambda: self._set_theme_mode(ThemeMode.DARK)
         )
 
+        settings_menu.addSeparator()
+        about_action = settings_menu.addAction("Über")
+        about_action.triggered.connect(self._open_about_dialog)
+
         backup_menu = self.menuBar().addMenu("Sicherung")
         backup_now_action = backup_menu.addAction("Jetzt sichern")
         backup_now_action.triggered.connect(self._on_backup_now_clicked)
@@ -148,6 +152,14 @@ class MainWindow(QMainWindow):
             self._treatment_type_service, parent=self
         )
         dialog.exec()
+
+    def _open_about_dialog(self) -> None:
+        show_about(
+            "Klientenverwaltung",
+            __version__,
+            load_svg_pixmap("logo", QSize(64, 64)),
+            parent=self,
+        )
 
     def _on_backup_now_clicked(self) -> None:
         folder = config.get_backup_folder_path() or self._drive_root

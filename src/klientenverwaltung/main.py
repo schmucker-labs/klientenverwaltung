@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
@@ -13,6 +13,7 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_retry, ask_retry_or_setup, show_error
+from klientenverwaltung.ui.icons import get_app_icon, load_svg_pixmap
 from klientenverwaltung.ui.main_window import MainWindow
 from klientenverwaltung.ui.password_dialog import ask_for_password
 from klientenverwaltung.ui.setup_wizard import SetupWizard
@@ -117,7 +118,12 @@ def main() -> int:
     font = app.font()
     font.setPointSize(font.pointSize() + 2)
     app.setFont(font)
+    app.setWindowIcon(get_app_icon())
     apply_theme_mode(load_theme_mode())
+
+    splash = QSplashScreen(load_svg_pixmap("splash"))
+    splash.show()
+    app.processEvents()
 
     acquired = _acquire_drive_and_engine()
     if acquired is None:
@@ -160,6 +166,7 @@ def main() -> int:
         drive_root=drive_root,
     )
     window.show()
+    splash.finish(window)
     return app.exec()
 
 

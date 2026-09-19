@@ -47,4 +47,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # Regenerate from ui/icons/logo.svg via scripts/generate_app_icon.py.
+    icon='src/klientenverwaltung/ui/icons/app.ico',
 )
