@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSettings, Qt
 from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QSpinBox
 
 # QCheckBox::indicator loses Qt's native checkmark glyph as soon as any of
 # its properties are styled via QSS, so :checked draws this fixed white
@@ -24,39 +24,74 @@ from PySide6.QtWidgets import QApplication
 # the Qt SVG plugin just for a checkbox tick.
 _CHECKMARK_ICON_PATH = (Path(__file__).parent / "assets" / "checkmark.png").as_posix()
 
-_DOWN_ARROW_SIZE = 10
+_ARROW_SIZE = 10
 
 
-def _down_arrow_icon_path(color: str) -> str:
-    """A small downward-pointing triangle in `color`, cached to a temp PNG.
+def _triangle_icon_path(direction: str, color: str) -> str:
+    """A small triangle pointing "up" or "down" in `color`, cached to a
+    temp PNG.
 
-    QComboBox::down-arrow needs an actual image - the usual QSS trick of
-    faking a triangle with transparent/solid borders does not render as a
-    triangle in this app's active style, it just shows a solid block - and
-    the color has to track the palette (text_secondary/text_disabled),
-    which rules out a single fixed asset like the checkbox checkmark uses.
-    Not client data, so a temp file is fine here (see storage rules).
+    QComboBox::down-arrow and QAbstractSpinBox::up-arrow/down-arrow need an
+    actual image - the usual QSS trick of faking a triangle with
+    transparent/solid borders does not render as a triangle in this app's
+    active style, it just shows a solid block - and the color has to track
+    the palette (text_secondary/text_disabled), which rules out a single
+    fixed asset like the checkbox checkmark uses. Not client data, so a
+    temp file is fine here (see storage rules).
     """
-    path = Path(tempfile.gettempdir()) / f"klientenverwaltung_combo_arrow_{color.lstrip('#')}.png"
+    path = (
+        Path(tempfile.gettempdir())
+        / f"klientenverwaltung_{direction}_arrow_{color.lstrip('#')}.png"
+    )
     if not path.exists():
-        pixmap = QPixmap(_DOWN_ARROW_SIZE, _DOWN_ARROW_SIZE)
+        pixmap = QPixmap(_ARROW_SIZE, _ARROW_SIZE)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(color))
+        tip_y = _ARROW_SIZE - 2 if direction == "down" else 2
+        base_y = 2 if direction == "down" else _ARROW_SIZE - 2
         painter.drawPolygon(
             QPolygon(
                 [
-                    QPoint(0, 2),
-                    QPoint(_DOWN_ARROW_SIZE, 2),
-                    QPoint(_DOWN_ARROW_SIZE // 2, _DOWN_ARROW_SIZE - 2),
+                    QPoint(0, base_y),
+                    QPoint(_ARROW_SIZE, base_y),
+                    QPoint(_ARROW_SIZE // 2, tip_y),
                 ]
             )
         )
         painter.end()
         pixmap.save(str(path))
     return path.as_posix()
+
+
+def _spin_button_height() -> int:
+    """QAbstractSpinBox's natural full height minus its 1px top/bottom
+    border - the up/down button pair's combined height (split in half
+    between them below), so together they fill it edge to edge.
+
+    Styling QAbstractSpinBox::up-button/down-button at all switches Qt
+    from its native Windows spin-button rendering (a style this app can
+    otherwise keep unstyled everywhere else) to drawing plain boxes from
+    these rules - required because the native rendering's up-button hit
+    area breaks entirely under a QSS border (confirmed with real click
+    probes: literally no pixel in the up-button's visible area registers
+    a click, while down-button's still does). They must stay stacked
+    top/bottom rather than side by side like the native rendering: Qt's
+    styled subcontrol-position for CC_SpinBox only differentiates up vs.
+    down vertically - `margin-right` does not shift a "top right"-anchored
+    box sideways, it only pads its own already-full-width rect, so two
+    side-by-side boxes placed that way overlap and one swallows the
+    other's clicks (confirmed the same way).
+
+    Measured from a real probe widget rather than computed by hand from
+    the font-metrics/padding/border literals below, so it can't quietly
+    drift out of sync with them, and keeps tracking correctly if the
+    app's global font size ever changes.
+    """
+    probe = QSpinBox()
+    return max(probe.sizeHint().height() - 2, 10)
 
 
 @dataclass(frozen=True)
@@ -253,13 +288,54 @@ def build_stylesheet(palette: ColorPalette) -> str:
             width: 22px;
         }}
         QComboBox::down-arrow {{
-            image: url({_down_arrow_icon_path(p.text_secondary)});
-            width: {_DOWN_ARROW_SIZE}px;
-            height: {_DOWN_ARROW_SIZE}px;
+            image: url({_triangle_icon_path("down", p.text_secondary)});
+            width: {_ARROW_SIZE}px;
+            height: {_ARROW_SIZE}px;
             margin-right: 6px;
         }}
         QComboBox::down-arrow:disabled {{
-            image: url({_down_arrow_icon_path(p.text_disabled)});
+            image: url({_triangle_icon_path("down", p.text_disabled)});
+        }}
+        QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{
+            subcontrol-origin: border;
+            width: 20px;
+            height: {_spin_button_height() // 2}px;
+            background-color: {p.surface_panel};
+            border-left: 1px solid {p.lines};
+        }}
+        QAbstractSpinBox::up-button {{
+            subcontrol-position: top right;
+            border-top-right-radius: 4px;
+        }}
+        QAbstractSpinBox::down-button {{
+            subcontrol-position: bottom right;
+            border-top: 1px solid {p.lines};
+            border-bottom-right-radius: 4px;
+        }}
+        QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{
+            background-color: {p.hover};
+        }}
+        QAbstractSpinBox::up-button:pressed, QAbstractSpinBox::down-button:pressed {{
+            background-color: {p.accent_secondary};
+        }}
+        QAbstractSpinBox::up-button:disabled, QAbstractSpinBox::down-button:disabled {{
+            background-color: {p.surface_panel};
+        }}
+        QAbstractSpinBox::up-arrow {{
+            image: url({_triangle_icon_path("up", p.text_secondary)});
+            width: {_ARROW_SIZE}px;
+            height: {_ARROW_SIZE}px;
+        }}
+        QAbstractSpinBox::down-arrow {{
+            image: url({_triangle_icon_path("down", p.text_secondary)});
+            width: {_ARROW_SIZE}px;
+            height: {_ARROW_SIZE}px;
+        }}
+        QAbstractSpinBox::up-arrow:disabled {{
+            image: url({_triangle_icon_path("up", p.text_disabled)});
+        }}
+        QAbstractSpinBox::down-arrow:disabled {{
+            image: url({_triangle_icon_path("down", p.text_disabled)});
         }}
         QComboBox QAbstractItemView {{
             background-color: {p.surface_panel};

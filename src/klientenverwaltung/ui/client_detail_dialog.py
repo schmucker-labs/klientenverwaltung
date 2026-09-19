@@ -1,6 +1,5 @@
-from PySide6.QtCore import QByteArray, QModelIndex, QSettings, Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -10,44 +9,41 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
-    QTableView,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from klientenverwaltung.models import Client, TreatmentSession
+from klientenverwaltung.models import Client
 from klientenverwaltung.services import (
     ClientService,
     ServiceError,
     TreatmentSessionService,
     TreatmentTypeService,
 )
-from klientenverwaltung.ui.dialogs import (
-    ask_confirm_delete,
-    ask_save_discard_cancel,
-    show_error,
-)
+from klientenverwaltung.ui.client_sessions_dialog import ClientSessionsDialog
+from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
 from klientenverwaltung.ui.optional_date_edit import OptionalDateEdit
-from klientenverwaltung.ui.session_dialog import SessionDialog
-from klientenverwaltung.ui.session_note_dialog import SessionNoteDialog
-from klientenverwaltung.ui.session_table_model import NOTE_COLUMN, SessionTableModel
-from klientenverwaltung.ui.window_settings import (
-    finalize_column_widths,
-    restore_geometry,
-    restore_header_state,
-    save_geometry,
-    save_header_state,
-)
+from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _SALUTATION_SUGGESTIONS = ["", "Herr", "Frau", "Herr Dr.", "Frau Dr."]
 _GEOMETRY_SETTINGS_KEY = "client_detail/geometry"
 _SPLITTER_SETTINGS_KEY = "client_detail/splitter_state"
-_SESSION_TABLE_HEADER_SETTINGS_KEY = "client_detail/session_table_header_state"
 
 
 class ClientDetailDialog(QDialog):
+    """A client's master data (Stammdaten, Anliegen, Notizen).
+
+    Sessions used to live in a table embedded right here, but that made
+    the window too tall for a small screen (e.g. 1366x768) even with a
+    QScrollArea - so they now live in their own window
+    (ClientSessionsDialog), reached via the "Sitzungen (n)" button at the
+    bottom, which also always shows the count and most recent date without
+    having to open it.
+    """
+
     def __init__(
         self,
         client_service: ClientService,
@@ -76,8 +72,7 @@ class ClientDetailDialog(QDialog):
             self.setWindowTitle("Neuer Klient")
 
         self._original_values = self._collect_form_values()
-        self._update_session_section_enabled()
-        self._reload_sessions()
+        self._update_sessions_button()
 
     def _build_ui(self) -> None:
         self._salutation_combo = QComboBox(self)
@@ -127,15 +122,25 @@ class ClientDetailDialog(QDialog):
         self._splitter.addWidget(
             self._build_labeled_panel("Anliegen:", self._concern_edit)
         )
-        self._splitter.addWidget(self._build_sessions_panel())
         self._splitter.addWidget(
             self._build_labeled_panel("Notizen:", self._notes_edit)
         )
         for pane_index in range(self._splitter.count()):
             self._splitter.setStretchFactor(pane_index, 1)
-        self._splitter.setSizes([120, 400, 120])
+        self._splitter.setSizes([200, 200])
         self._splitter.splitterMoved.connect(self._save_splitter_state)
         self._restore_splitter_state()
+
+        self._sessions_button = QPushButton(self)
+        self._sessions_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self._sessions_button.clicked.connect(self._on_sessions_clicked)
+        self._sessions_last_date_label = QLabel(self)
+        self._sessions_last_date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sessions_section = QVBoxLayout()
+        sessions_section.addWidget(self._sessions_button)
+        sessions_section.addWidget(self._sessions_last_date_label)
 
         close_button = QPushButton("Schließen", self)
         close_button.clicked.connect(self.reject)
@@ -147,7 +152,8 @@ class ClientDetailDialog(QDialog):
         # a small screen (e.g. 1366x768) - wrapped in a QScrollArea, the
         # dialog's own minimum height stays small (just enough to show a
         # scrollbar) instead of forcing the window itself taller than the
-        # screen. The close button stays outside/below it, always visible.
+        # screen. The Sitzungen button and the close button stay outside/
+        # below it, always visible without having to scroll down.
         scroll_content = QWidget(self)
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
@@ -162,6 +168,7 @@ class ClientDetailDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(scroll_area, 1)
+        layout.addLayout(sessions_section)
         layout.addLayout(close_row)
 
     @staticmethod
@@ -173,70 +180,6 @@ class ClientDetailDialog(QDialog):
         layout.addWidget(content)
         return panel
 
-    def _build_sessions_panel(self) -> QWidget:
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(QLabel("<b>Sitzungen</b>", panel))
-
-        self._new_session_hint = QLabel(
-            "Sitzungen können hinzugefügt werden, nachdem der Klient gespeichert wurde.",
-            panel,
-        )
-        layout.addWidget(self._new_session_hint)
-
-        self._session_table_model = SessionTableModel()
-        self._session_table_view = QTableView(panel)
-        self._session_table_view.setModel(self._session_table_model)
-        self._session_table_view.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._session_table_view.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self._session_table_view.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-        session_header = self._session_table_view.horizontalHeader()
-        self._session_table_view.verticalHeader().setVisible(False)
-        restored = restore_header_state(
-            session_header, _SESSION_TABLE_HEADER_SETTINGS_KEY
-        )
-        if not restored:
-            self._session_table_view.resizeColumnsToContents()
-            self._session_table_view.setColumnWidth(NOTE_COLUMN, 40)
-        # Behandlungsart (treatment type name) is the one open-ended,
-        # variable-length column, so it gets the remaining space rather than
-        # stretching whichever column happens to be last - Notiz is last and
-        # must stay a narrow, fixed-width icon column.
-        finalize_column_widths(
-            session_header, self._session_table_model.columnCount(), 1, restored
-        )
-        session_header.sectionResized.connect(self._save_session_table_header_state)
-        self._session_table_view.selectionModel().selectionChanged.connect(
-            self._update_session_button_states
-        )
-        self._session_table_view.clicked.connect(self._on_session_table_clicked)
-        layout.addWidget(self._session_table_view)
-
-        self._new_session_button = QPushButton("Neue Sitzung", panel)
-        self._edit_session_button = QPushButton("Bearbeiten", panel)
-        self._delete_session_button = QPushButton("Löschen", panel)
-        self._edit_session_button.setEnabled(False)
-        self._delete_session_button.setEnabled(False)
-        self._new_session_button.clicked.connect(self._on_new_session_clicked)
-        self._edit_session_button.clicked.connect(self._on_edit_session_clicked)
-        self._delete_session_button.clicked.connect(self._on_delete_session_clicked)
-
-        session_button_row = QHBoxLayout()
-        session_button_row.addStretch()
-        session_button_row.addWidget(self._new_session_button)
-        session_button_row.addWidget(self._edit_session_button)
-        session_button_row.addWidget(self._delete_session_button)
-        layout.addLayout(session_button_row)
-
-        return panel
-
     def _restore_splitter_state(self) -> None:
         state = QSettings().value(_SPLITTER_SETTINGS_KEY)
         if isinstance(state, QByteArray):
@@ -244,12 +187,6 @@ class ClientDetailDialog(QDialog):
 
     def _save_splitter_state(self) -> None:
         QSettings().setValue(_SPLITTER_SETTINGS_KEY, self._splitter.saveState())
-
-    def _save_session_table_header_state(self) -> None:
-        save_header_state(
-            self._session_table_view.horizontalHeader(),
-            _SESSION_TABLE_HEADER_SETTINGS_KEY,
-        )
 
     def done(self, result: int) -> None:
         # done() is the single choke point every close path (accept, the
@@ -295,32 +232,26 @@ class ClientDetailDialog(QDialog):
     def _is_dirty(self) -> bool:
         return self._collect_form_values() != self._original_values
 
-    def _update_session_section_enabled(self) -> None:
-        has_client = self._client_id is not None
-        self._new_session_hint.setVisible(not has_client)
-        self._new_session_button.setEnabled(has_client)
-        self._session_table_view.setEnabled(has_client)
-
-    def _reload_sessions(self) -> None:
+    def _update_sessions_button(self) -> None:
         if self._client_id is None:
-            self._session_table_model.set_sessions([])
-        else:
-            sessions = self._treatment_session_service.list_sessions_for_client(
-                self._client_id
+            self._sessions_button.setText("Sitzungen")
+            self._sessions_button.setEnabled(False)
+            self._sessions_last_date_label.setText(
+                "Sitzungen können hinzugefügt werden, nachdem der Klient "
+                "gespeichert wurde."
             )
-            self._session_table_model.set_sessions(sessions)
-        self._update_session_button_states()
-
-    def _selected_session(self) -> TreatmentSession | None:
-        rows = self._session_table_view.selectionModel().selectedRows()
-        if len(rows) != 1:
-            return None
-        return self._session_table_model.session_at(rows[0].row())
-
-    def _update_session_button_states(self) -> None:
-        has_selection = self._selected_session() is not None
-        self._edit_session_button.setEnabled(has_selection)
-        self._delete_session_button.setEnabled(has_selection)
+            return
+        sessions = self._treatment_session_service.list_sessions_for_client(
+            self._client_id
+        )
+        self._sessions_button.setEnabled(True)
+        self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
+        if sessions:
+            self._sessions_last_date_label.setText(
+                f"Letzte Sitzung: {sessions[0].date.strftime('%d.%m.%Y')}"
+            )
+        else:
+            self._sessions_last_date_label.setText("Noch keine Sitzungen")
 
     def _on_save_clicked(self) -> None:
         values = self._collect_form_values()
@@ -335,69 +266,31 @@ class ClientDetailDialog(QDialog):
             return
         self._original_values = values
         self.setWindowTitle(f"Klient: {client.first_name} {client.last_name}")
-        self._update_session_section_enabled()
-        self._reload_sessions()
+        self._update_sessions_button()
 
-    def _on_new_session_clicked(self) -> None:
+    def _on_sessions_clicked(self) -> None:
         if self._client_id is None:
             return
-        dialog = SessionDialog(
+        if self._is_dirty():
+            choice = ask_save_discard_cancel(
+                "Es gibt ungespeicherte Änderungen an diesem Klienten.", parent=self
+            )
+            if choice == "cancel":
+                return
+            if choice == "save":
+                self._on_save_clicked()
+                if self._is_dirty():
+                    return
+        client_name = f"{self._first_name_edit.text()} {self._last_name_edit.text()}"
+        dialog = ClientSessionsDialog(
             self._treatment_type_service,
             self._treatment_session_service,
             self._client_id,
-            session=None,
+            client_name.strip(),
             parent=self,
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._reload_sessions()
-
-    def _on_edit_session_clicked(self) -> None:
-        session = self._selected_session()
-        if session is None:
-            return
-        self._edit_session(session)
-
-    def _on_session_table_clicked(self, index: QModelIndex) -> None:
-        if not index.isValid() or index.column() != NOTE_COLUMN:
-            return
-        session = self._session_table_model.session_at(index.row())
-        if not session.notes:
-            return
-        dialog = SessionNoteDialog(session.notes, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._edit_session(session)
-
-    def _edit_session(self, session: TreatmentSession) -> None:
-        if self._client_id is None:
-            return
-        dialog = SessionDialog(
-            self._treatment_type_service,
-            self._treatment_session_service,
-            self._client_id,
-            session=session,
-            parent=self,
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._reload_sessions()
-
-    def _on_delete_session_clicked(self) -> None:
-        session = self._selected_session()
-        if session is None:
-            return
-        confirmed = ask_confirm_delete(
-            f"Sitzung vom {session.date.strftime('%d.%m.%Y %H:%M')} "
-            f"({session.treatment_type.name}) unwiderruflich löschen?",
-            title="Sitzung löschen",
-            parent=self,
-        )
-        if not confirmed:
-            return
-        try:
-            self._treatment_session_service.delete_session(session.id)
-        except ServiceError as exc:
-            show_error(str(exc), parent=self)
-            return
-        self._reload_sessions()
+        dialog.exec()
+        self._update_sessions_button()
 
     def reject(self) -> None:
         if not self._is_dirty():

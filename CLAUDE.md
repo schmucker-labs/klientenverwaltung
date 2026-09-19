@@ -222,3 +222,9 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
   Bildschirmgröße, und beim Öffnen hineinschieben, falls das Fenster herausragt. Das
   gilt auch für gespeicherte Werte aus QSettings. Alle Fenster müssen auf 1366x768
   vollständig nutzbar sein; bei zu wenig Platz den Inhalt in eine QScrollArea legen.
+- Sitzungen liegen in einem eigenen Fenster, nicht im Klientenfenster. Das Klientenfenster
+  zeigt nur Stammdaten, Anliegen und Notizen; der Zugang zu den Sitzungen erfolgt über
+  einen Button unten mit Anzahl und Datum der letzten Sitzung.
+- Bei gestylten QSpinBox, QDoubleSpinBox und QDateTimeEdit immer up-button UND
+  down-button vollständig definieren (Breite, Höhe, subcontrol-origin/-position),
+  sonst wird eine der beiden Klickflächen winzig, obwohl der Pfeil normal aussieht.
