@@ -9,11 +9,13 @@ not to individual windows, so a mode switch reaches every open window and
 dialog immediately, with no restart needed.
 """
 
+import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QPoint, QSettings, Qt
+from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygon
 from PySide6.QtWidgets import QApplication
 
 # QCheckBox::indicator loses Qt's native checkmark glyph as soon as any of
@@ -21,6 +23,40 @@ from PySide6.QtWidgets import QApplication
 # icon instead. A PNG rather than SVG, so PyInstaller never needs to bundle
 # the Qt SVG plugin just for a checkbox tick.
 _CHECKMARK_ICON_PATH = (Path(__file__).parent / "assets" / "checkmark.png").as_posix()
+
+_DOWN_ARROW_SIZE = 10
+
+
+def _down_arrow_icon_path(color: str) -> str:
+    """A small downward-pointing triangle in `color`, cached to a temp PNG.
+
+    QComboBox::down-arrow needs an actual image - the usual QSS trick of
+    faking a triangle with transparent/solid borders does not render as a
+    triangle in this app's active style, it just shows a solid block - and
+    the color has to track the palette (text_secondary/text_disabled),
+    which rules out a single fixed asset like the checkbox checkmark uses.
+    Not client data, so a temp file is fine here (see storage rules).
+    """
+    path = Path(tempfile.gettempdir()) / f"klientenverwaltung_combo_arrow_{color.lstrip('#')}.png"
+    if not path.exists():
+        pixmap = QPixmap(_DOWN_ARROW_SIZE, _DOWN_ARROW_SIZE)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(color))
+        painter.drawPolygon(
+            QPolygon(
+                [
+                    QPoint(0, 2),
+                    QPoint(_DOWN_ARROW_SIZE, 2),
+                    QPoint(_DOWN_ARROW_SIZE // 2, _DOWN_ARROW_SIZE - 2),
+                ]
+            )
+        )
+        painter.end()
+        pixmap.save(str(path))
+    return path.as_posix()
 
 
 @dataclass(frozen=True)
@@ -158,7 +194,7 @@ def apply_theme_mode(mode: ThemeMode) -> None:
 def build_stylesheet(palette: ColorPalette) -> str:
     p = palette
     return f"""
-        QMainWindow, QWidget {{
+        QMainWindow, QWidget, QWizard {{
             background-color: {p.background};
             color: {p.text};
         }}
@@ -215,6 +251,15 @@ def build_stylesheet(palette: ColorPalette) -> str:
         QComboBox::drop-down {{
             border: none;
             width: 22px;
+        }}
+        QComboBox::down-arrow {{
+            image: url({_down_arrow_icon_path(p.text_secondary)});
+            width: {_DOWN_ARROW_SIZE}px;
+            height: {_DOWN_ARROW_SIZE}px;
+            margin-right: 6px;
+        }}
+        QComboBox::down-arrow:disabled {{
+            image: url({_down_arrow_icon_path(p.text_disabled)});
         }}
         QComboBox QAbstractItemView {{
             background-color: {p.surface_panel};

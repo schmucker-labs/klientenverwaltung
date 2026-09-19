@@ -47,3 +47,14 @@ def set_backup_folder_path(folder_path: Path) -> None:
     data = _read_config()
     data[_BACKUP_FOLDER_PATH_KEY] = str(folder_path)
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def reset() -> None:
+    """Deletes config.json (last known drive, backup folder path).
+
+    Used by --reset-settings alongside clearing QSettings, so the app can
+    be put back into a fresh-install state for repeatedly testing the
+    setup wizard - without this, a stale last_known_drive_path or
+    backup_folder_path from a previous install would still linger.
+    """
+    _config_path().unlink(missing_ok=True)

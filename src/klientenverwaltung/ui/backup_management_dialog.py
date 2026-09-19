@@ -66,7 +66,12 @@ class BackupManagementDialog(QDialog):
 
         self._folder_error_label = QLabel(self)
         self._folder_error_label.setWordWrap(True)
-        self._folder_error_label.setVisible(False)
+        # Always visible (text just switches between empty and a message)
+        # so the reserved space never appears/disappears and shifts the
+        # rows above it.
+        self._folder_error_label.setMinimumHeight(
+            self._folder_error_label.fontMetrics().height() * 2
+        )
 
         folder_row = QHBoxLayout()
         folder_row.addWidget(QLabel("Sicherungsordner:", self))
@@ -193,13 +198,12 @@ class BackupManagementDialog(QDialog):
                 f"In diesen Ordner kann nicht geschrieben werden: {path}"
             )
             return
-        self._folder_error_label.setVisible(False)
+        self._folder_error_label.setText("")
         config.set_backup_folder_path(path)
         self._reload_table()
 
     def _reject_folder(self, message: str) -> None:
         self._folder_error_label.setText(message)
-        self._folder_error_label.setVisible(True)
         configured = config.get_backup_folder_path()
         self._folder_edit.setText(str(configured) if configured else "")
 

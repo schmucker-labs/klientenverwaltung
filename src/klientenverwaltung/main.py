@@ -2,7 +2,13 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEasingCurve, QPropertyAnimation, QTimer
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEasingCurve,
+    QPropertyAnimation,
+    QSettings,
+    QTimer,
+)
 from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
@@ -219,6 +225,14 @@ def main() -> int:
     # never client data, which stays on the encrypted USB-Datenplatte.
     QCoreApplication.setOrganizationName("Klientenverwaltung")
     QCoreApplication.setApplicationName("Klientenverwaltung")
+
+    if "--reset-settings" in sys.argv:
+        QSettings().clear()
+        # last_known_drive_path/backup_folder_path live in config.json, not
+        # QSettings - also clearing it here so this flag actually puts the
+        # app back into a fresh-install state, not just resetting the UI.
+        config.reset()
+        print("Einstellungen wurden zurückgesetzt.")
 
     app = QApplication(sys.argv)
     font = app.font()

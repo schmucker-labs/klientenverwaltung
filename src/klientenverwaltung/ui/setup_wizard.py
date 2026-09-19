@@ -1,10 +1,12 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -22,6 +24,25 @@ from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _GEOMETRY_SETTINGS_KEY = "setup_wizard/geometry"
+
+
+class _CheckboxLabel(QLabel):
+    """Word-wrapping label standing in for a checkbox's own text.
+
+    QCheckBox never wraps its text (it clips at the widget edge instead),
+    so the checkbox here carries no text of its own - this label shows it
+    next to the checkbox instead, with a click toggling that checkbox just
+    like clicking the checkbox itself would.
+    """
+
+    def __init__(self, text: str, checkbox: QCheckBox, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._checkbox = checkbox
+        self.setWordWrap(True)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        self._checkbox.toggle()
+        super().mousePressEvent(event)
 
 
 class _WelcomePage(QWizardPage):
@@ -66,7 +87,7 @@ class _DrivePage(QWizardPage):
     def initializePage(self) -> None:
         self._drive_list.clear()
         for drive in storage.list_available_drives():
-            item = QListWidgetItem(str(drive))
+            item = QListWidgetItem(storage.describe_drive(drive))
             item.setData(Qt.ItemDataRole.UserRole, drive)
             self._drive_list.addItem(item)
         self._update_warning()
@@ -78,6 +99,13 @@ class _DrivePage(QWizardPage):
     def _selected_drive(self) -> Path | None:
         item = self._drive_list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+
+    def _selected_drive_display(self) -> str | None:
+        """The exact text shown for the selected drive in the list above -
+        the summary page reads this same string, rather than recomputing
+        its own, so the two can never drift apart."""
+        item = self._drive_list.currentItem()
+        return item.text() if item is not None else None
 
     def _update_warning(self) -> None:
         drive = self._selected_drive()
@@ -110,6 +138,7 @@ class _DrivePage(QWizardPage):
         wizard = self.wizard()
         assert isinstance(wizard, SetupWizard)
         wizard.selected_drive = self._selected_drive()
+        wizard.selected_drive_display = self._selected_drive_display()
         return True
 
 
@@ -137,15 +166,23 @@ class _PasswordPage(QWizardPage):
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._password_repeat_edit = QLineEdit(self)
         self._password_repeat_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self._confirm_checkbox = QCheckBox(
+        self._confirm_checkbox = QCheckBox(self)
+        confirm_label = _CheckboxLabel(
             "Ich habe verstanden: Ohne dieses Passwort sind die Daten "
             "unwiederbringlich verloren.",
+            self._confirm_checkbox,
             self,
         )
+        confirm_row = QHBoxLayout()
+        confirm_row.addWidget(self._confirm_checkbox, 0, Qt.AlignmentFlag.AlignTop)
+        confirm_row.addWidget(confirm_label, 1)
 
         self._error_label = QLabel(self)
         self._error_label.setWordWrap(True)
-        self._error_label.setVisible(False)
+        # Always visible (text just switches between empty and a message)
+        # so the two-line-tall reserved space never appears/disappears and
+        # shifts the fields above it.
+        self._error_label.setMinimumHeight(self._error_label.fontMetrics().height() * 2)
 
         form = QFormLayout()
         form.addRow("Passwort:", self._password_edit)
@@ -154,7 +191,7 @@ class _PasswordPage(QWizardPage):
         layout = QVBoxLayout(self)
         layout.addWidget(warning)
         layout.addLayout(form)
-        layout.addWidget(self._confirm_checkbox)
+        layout.addLayout(confirm_row)
         layout.addWidget(self._error_label)
 
         self._password_edit.textChanged.connect(self._on_changed)
@@ -173,19 +210,17 @@ class _PasswordPage(QWizardPage):
 
     def _update_error(self) -> None:
         if not self._password_edit.text() and not self._password_repeat_edit.text():
-            self._error_label.setVisible(False)
+            self._error_label.setText("")
             return
         if not self._password_long_enough():
             self._error_label.setText(
                 "Das Passwort muss mindestens "
                 f"{storage.MIN_PASSWORD_LENGTH} Zeichen lang sein."
             )
-            self._error_label.setVisible(True)
         elif not self._passwords_match():
             self._error_label.setText("Die beiden Passwörter stimmen nicht überein.")
-            self._error_label.setVisible(True)
         else:
-            self._error_label.setVisible(False)
+            self._error_label.setText("")
 
     def isComplete(self) -> bool:
         return (
@@ -267,7 +302,7 @@ class _SummaryPage(QWizardPage):
             "Einstellungen nachgetragen werden)"
         )
         self._summary_label.setText(
-            f"Datenplatte: {wizard.selected_drive}\n"
+            f"Datenplatte: {wizard.selected_drive_display}\n"
             "Passwort: festgelegt\n"
             f"{backup_line}\n\n"
             'Mit "Fertig stellen" werden jetzt die Kennungsdatei, die '
@@ -305,13 +340,22 @@ class SetupWizard(QWizard):
         super().__init__(parent)
         self.setWindowTitle("Datenplatte einrichten")
         self.setModal(True)
+        # AeroStyle/ModernStyle paint their banner and button row natively
+        # on Windows, ignoring the app's stylesheet entirely (the cause of
+        # a white bar in dark mode) - ClassicStyle draws everything as
+        # normal, themeable Qt widgets instead.
+        self.setWizardStyle(QWizard.WizardStyle.ClassicStyle)
         self.setButtonText(QWizard.WizardButton.BackButton, "Zurück")
         self.setButtonText(QWizard.WizardButton.NextButton, "Weiter")
         self.setButtonText(QWizard.WizardButton.FinishButton, "Fertig stellen")
         self.setButtonText(QWizard.WizardButton.CancelButton, "Abbrechen")
+        # Large enough that the longest hint text (the "not a removable
+        # drive" warning on the drive page) never gets clipped or squeezed.
+        self.setMinimumSize(600, 500)
         restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
         self.selected_drive: Path | None = None
+        self.selected_drive_display: str | None = None
         self.chosen_password: str = ""
         self.chosen_backup_folder: Path | None = None
         self.engine: Engine | None = None

@@ -267,6 +267,35 @@ def list_available_drives() -> list[Path]:
     return [Path(f"{letter}:\\") for letter in _assigned_drive_letters()]
 
 
+_DRIVE_TYPE_FALLBACK_NAMES = {
+    2: "Wechseldatenträger",  # DRIVE_REMOVABLE
+    3: "Lokaler Datenträger",  # DRIVE_FIXED
+    4: "Netzlaufwerk",  # DRIVE_REMOTE
+    5: "CD-/DVD-Laufwerk",  # DRIVE_CDROM
+}
+
+
+def describe_drive(drive_root: Path) -> str:
+    """Drive path plus its Windows volume name, e.g. "D:\\ (USB-Datenträger)".
+
+    Mirrors what Windows Explorer shows: the actual volume label if one is
+    set, otherwise a generic name for the drive's media type (matching the
+    label Explorer itself falls back to for an unlabeled drive) - never
+    just the bare drive letter, which alone rarely helps the user recognize
+    the correct one among several plugged-in drives.
+    """
+    root = f"{str(drive_root)[0]}:\\"
+    volume_name_buffer = ctypes.create_unicode_buffer(261)
+    success = ctypes.windll.kernel32.GetVolumeInformationW(  # type: ignore[attr-defined]
+        root, volume_name_buffer, len(volume_name_buffer), None, None, None, None, 0
+    )
+    label = volume_name_buffer.value.strip() if success else ""
+    if not label:
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW(root)  # type: ignore[attr-defined]
+        label = _DRIVE_TYPE_FALLBACK_NAMES.get(drive_type, "Datenträger")
+    return f"{drive_root} ({label})"
+
+
 def is_removable_drive(drive_root: Path) -> bool:
     """True if Windows reports this drive's media as removable (e.g. a USB stick).
 

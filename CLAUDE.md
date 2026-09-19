@@ -205,3 +205,9 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
   und werden dadurch unbedienbar. Für QMenu::item immer padding setzen, für
   QSplitter::handle immer eine Breite/Höhe (ca. 6 px), eine sichtbare Farbe und
   einen Hover-Zustand.
+- Bei gestylten QComboBox immer auch ::drop-down und ::down-arrow gestalten, sonst
+  fehlt der Aufklapp-Pfeil. Gleiches gilt für QWizard: der Button-Bereich wird separat
+  eingefärbt und bleibt sonst im nativen Hell.
+- Ein- und ausblendbare Fehler- oder Hinweistexte bekommen dauerhaft reservierten
+  Platz im Layout, damit beim Erscheinen nichts springt.
+- Jedes Fenster und jeder Dialog hat einen gesetzten deutschen Fenstertitel.
