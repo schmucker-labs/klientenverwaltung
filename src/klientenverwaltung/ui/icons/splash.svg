@@ -19,5 +19,5 @@
 
   <line x1="60" y1="240" x2="440" y2="240" stroke="#DDD5CA" stroke-width="1"/>
   <text x="440" y="264" font-family="Segoe UI, Calibri, sans-serif" font-size="13"
-        fill="#766E65" text-anchor="end">Product by R. Schmucker</text>
+        fill="#766E65" text-anchor="end">Product by __AUTHOR_SHORT__</text>
 </svg>

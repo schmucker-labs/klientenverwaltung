@@ -1,5 +1,6 @@
 import ctypes
 import string
+import sys
 import uuid
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -172,13 +173,24 @@ def find_data_drive() -> Path:
     return found
 
 
+def _bundle_root() -> Path:
+    """Where alembic.ini and alembic/ live.
+
+    In a normal dev checkout, that's the repo root. Frozen into a
+    PyInstaller .exe, source files no longer exist on disk as such -
+    sys._MEIPASS is the extraction directory (onefile) or the app's own
+    install directory (onedir), either way wherever klientenverwaltung.spec's
+    `datas` placed its copies of alembic.ini/alembic/.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parents[2]
+
+
 def _alembic_config(connection: Connection | None = None) -> Config:
-    # Resolved relative to the repo root for now; PyInstaller builds (step 7)
-    # will need to bundle alembic.ini/alembic/ as data files and resolve this
-    # via sys._MEIPASS instead.
-    repo_root = Path(__file__).resolve().parents[2]
-    alembic_cfg = Config(str(repo_root / "alembic.ini"))
-    alembic_cfg.set_main_option("script_location", str(repo_root / "alembic"))
+    bundle_root = _bundle_root()
+    alembic_cfg = Config(str(bundle_root / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(bundle_root / "alembic"))
     if connection is not None:
         alembic_cfg.attributes["connection"] = connection
     return alembic_cfg

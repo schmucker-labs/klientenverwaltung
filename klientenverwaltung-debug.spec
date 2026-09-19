@@ -1,13 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# PyInstaller build config for the full application (build/ and dist/ output
-# are gitignored, this file is not - keep it at the repo root, not build/).
-# Build with `uv run python scripts/build_exe.py` (or directly:
-# `uv run pyinstaller klientenverwaltung.spec --noconfirm`).
+# Diagnostic build: identical to klientenverwaltung.spec except console=True,
+# so unhandled-exception output (and Qt's own stderr diagnostics, e.g. a
+# missing platform/SVG plugin) show up in a console window - the release
+# build's console=False otherwise swallows all of that with nothing visible.
 #
-# Shared with klientenverwaltung-debug.spec (a console=True diagnostic
-# build - see that file) via scripts/pyinstaller_common.py; only the
-# EXE(name=..., console=...) below should ever differ between the two.
+# For troubleshooting only, never for distribution to the actual user.
+# Build with `uv run python scripts/build_exe.py --debug` (or directly:
+# `uv run pyinstaller klientenverwaltung-debug.spec --noconfirm`). Produces
+# dist/klientenverwaltung-debug.exe, separate from the release build.
 
 import sys
 from pathlib import Path
@@ -43,20 +44,19 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='klientenverwaltung',
+    name='klientenverwaltung-debug',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # Regenerate from ui/icons/logo.svg via scripts/generate_app_icon.py.
     icon=ICON_PATH,
     version=build_version_info(),
 )

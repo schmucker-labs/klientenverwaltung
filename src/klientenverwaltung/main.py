@@ -1,6 +1,9 @@
 import sys
+import traceback
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
+from types import TracebackType
 
 from PySide6.QtCore import (
     QCoreApplication,
@@ -14,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from klientenverwaltung import backup, config, storage
+from klientenverwaltung import AUTHOR_SHORT, backup, config, storage
 from klientenverwaltung.services import (
     ClientService,
     TreatmentSessionService,
@@ -86,10 +89,21 @@ def _acquire_drive_and_engine() -> tuple[Path, Engine] | None:
 def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
     """The automatic startup backup.
 
-    Skipped when the database hasn't changed since the last backup and no
-    migration is pending - running it anyway would just create an
-    identical copy. A pending migration always forces a fresh backup
-    regardless, per "vor Migrationen wird weiterhin immer gesichert".
+    With no backup folder configured (deliberately skipped in the setup
+    wizard, or never set up since), nothing is backed up automatically -
+    not even onto the data drive itself - except when a migration is
+    about to run, which always forces a backup regardless (see below).
+    MainWindow's status bar tells the user backups aren't set up in this
+    case; a dialog does not interrupt every single startup for it.
+
+    With a backup folder configured, the drive itself is used only as a
+    fallback for when that folder is unreachable right now - and always
+    before a migration regardless of reachability, per "vor Migrationen
+    wird weiterhin immer gesichert".
+
+    Skipped entirely (in either case) when the database hasn't changed
+    since the last backup and no migration is pending - running it anyway
+    would just create an identical copy.
 
     Returns True if the database is adequately protected (a fresh backup
     was just made, or none was needed); False if one was needed but could
@@ -97,22 +111,29 @@ def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
     migration is about to run unprotected) or just a visible warning.
     """
     configured_folder = config.get_backup_folder_path()
-    check_folders = [drive_root, *([configured_folder] if configured_folder else [])]
-    last_backup = backup.most_recent_backup(check_folders)
-
     migration_pending = storage.has_pending_migrations(engine)
+
+    if configured_folder is None:
+        if not migration_pending:
+            return True
+        try:
+            backup.create_backup(engine, drive_root)
+            return True
+        except backup.BackupError:
+            return False
+
+    last_backup = backup.most_recent_backup([drive_root, configured_folder])
     db_path = drive_root / storage.DB_FILENAME
     if not migration_pending and backup.is_database_unchanged_since_backup(
         db_path, last_backup
     ):
         return True
 
-    if configured_folder is not None:
-        try:
-            backup.create_backup(engine, configured_folder)
-            return True
-        except backup.BackupError:
-            pass
+    try:
+        backup.create_backup(engine, configured_folder)
+        return True
+    except backup.BackupError:
+        pass
     try:
         backup.create_backup(engine, drive_root)
         return True
@@ -125,7 +146,10 @@ def _show_splash() -> QSplashScreen:
     currently on, invisible at first so _play_splash_intro() can fade it in.
     """
     screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-    splash = QSplashScreen(screen, load_svg_pixmap("splash"))
+    splash_pixmap = load_svg_pixmap(
+        "splash", substitutions={"__AUTHOR_SHORT__": AUTHOR_SHORT}
+    )
+    splash = QSplashScreen(screen, splash_pixmap)
     splash.setWindowOpacity(0.0)
     splash.show()
     return splash
@@ -220,7 +244,49 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
     _fade_out_splash(splash)
 
 
+def _log_and_show_crash(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_tb: TracebackType | None,
+) -> None:
+    """Last-resort handler for exceptions nothing else caught.
+
+    Without this, the default excepthook just writes to stderr - which in
+    this windowed (console=False) release build goes nowhere, so the app
+    appears to simply vanish with no explanation. Logs the technical
+    details (exception type/message/traceback only, never anything from a
+    client record) to %APPDATA%, then tells the user in plain German
+    instead of dying silently. Installed as sys.excepthook at the very top
+    of main(), so it also covers exceptions PySide6 routes there itself
+    (an exception escaping a Qt-driven callback, e.g. the splash-timer
+    callback that builds the main window).
+    """
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
+
+    log_path = config.error_log_path()
+    details = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(f"--- {datetime.now():%Y-%m-%d %H:%M:%S} ---\n{details}\n")
+    except OSError:
+        pass
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    show_error(
+        "Es ist ein unerwarteter Fehler aufgetreten. Die Anwendung wird "
+        "beendet.\n\nTechnische Details wurden gespeichert in:\n"
+        f"{log_path}",
+        title="Unerwarteter Fehler",
+    )
+    app.quit()
+
+
 def main() -> int:
+    sys.excepthook = _log_and_show_crash
+
     # Only for QSettings (window geometry, column widths, splitter sizes) -
     # never client data, which stays on the encrypted USB-Datenplatte.
     QCoreApplication.setOrganizationName("Klientenverwaltung")

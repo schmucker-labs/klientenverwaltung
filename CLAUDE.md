@@ -211,3 +211,14 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
 - Ein- und ausblendbare Fehler- oder Hinweistexte bekommen dauerhaft reservierten
   Platz im Layout, damit beim Erscheinen nichts springt.
 - Jedes Fenster und jeder Dialog hat einen gesetzten deutschen Fenstertitel.
+- alembic/env.py und alembic/versions/*.py werden als Datendateien gebündelt und von
+  PyInstaller nicht auf Imports analysiert. Jedes dort importierte Modul muss deshalb
+  ausdrücklich in HIDDEN_IMPORTS stehen (z. B. logging.config), sonst fehlt es nur im
+  Build ohne Python-Installation. Bei jeder neuen Migration prüfen, ob sie neue Imports
+  mitbringt.
+- Es werden immer zwei Builds erzeugt: Release ohne Konsole und eine Debug-Variante mit
+  Konsole für die Fehlersuche beim Anwender.
+- Fenstergrößen immer gegen QScreen.availableGeometry() prüfen, nicht gegen die volle
+  Bildschirmgröße, und beim Öffnen hineinschieben, falls das Fenster herausragt. Das
+  gilt auch für gespeicherte Werte aus QSettings. Alle Fenster müssen auf 1366x768
+  vollständig nutzbar sein; bei zu wenig Platz den Inhalt in eine QScrollArea legen.

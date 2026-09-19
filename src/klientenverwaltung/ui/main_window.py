@@ -5,7 +5,7 @@ from PySide6.QtGui import QActionGroup, QCloseEvent
 from PySide6.QtWidgets import QLabel, QMainWindow, QToolButton
 from sqlalchemy import Engine
 
-from klientenverwaltung import __version__, backup, config
+from klientenverwaltung import AUTHOR, __version__, backup, config
 from klientenverwaltung.services import (
     ClientService,
     TreatmentSessionService,
@@ -131,11 +131,11 @@ class MainWindow(QMainWindow):
         )
 
     def _update_backup_status_label(self) -> None:
-        folders = [self._drive_root]
         configured = config.get_backup_folder_path()
-        if configured is not None:
-            folders.append(configured)
-        latest = backup.most_recent_backup(folders)
+        if configured is None:
+            self._backup_status_label.setText("Keine Sicherungen eingerichtet")
+            return
+        latest = backup.most_recent_backup([self._drive_root, configured])
         if latest is None:
             self._backup_status_label.setText("Letzte Sicherung: keine vorhanden")
             return
@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
         show_about(
             "Klientenverwaltung",
             __version__,
+            AUTHOR,
             load_svg_pixmap("logo", QSize(64, 64)),
             parent=self,
         )

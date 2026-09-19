@@ -4,10 +4,12 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableView,
     QTextEdit,
@@ -141,10 +143,25 @@ class ClientDetailDialog(QDialog):
         close_row.addStretch()
         close_row.addWidget(close_button)
 
+        # The form + splitter combined would need more height than fits on
+        # a small screen (e.g. 1366x768) - wrapped in a QScrollArea, the
+        # dialog's own minimum height stays small (just enough to show a
+        # scrollbar) instead of forcing the window itself taller than the
+        # screen. The close button stays outside/below it, always visible.
+        scroll_content = QWidget(self)
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.addLayout(form)
+        scroll_layout.addLayout(save_row)
+        scroll_layout.addWidget(self._splitter, 1)
+
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setWidget(scroll_content)
+
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addLayout(save_row)
-        layout.addWidget(self._splitter, 1)
+        layout.addWidget(scroll_area, 1)
         layout.addLayout(close_row)
 
     @staticmethod

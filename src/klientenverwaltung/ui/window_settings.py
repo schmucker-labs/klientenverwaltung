@@ -16,24 +16,63 @@ MIN_COLUMN_WIDTH = 30
 
 
 def restore_geometry(widget: QWidget, key: str) -> None:
-    """Restores a saved window size+position; does nothing on first run.
+    """Restores a saved window size+position, or leaves the widget's own
+    default (its resize() call, or its natural sizeHint) on first run, or
+    when what was saved is unusable (zero size, entirely off-screen - e.g.
+    after an external monitor was unplugged).
 
-    Leaves whatever default the widget already has (e.g. its own resize()
-    call, or its natural sizeHint) untouched when no value was saved yet,
-    or when what was saved is unusable (zero size, entirely off-screen -
-    e.g. after an external monitor was unplugged).
+    Either way, always finishes with clamp_to_available_geometry(): a
+    saved size from a larger/differently-arranged screen, or a plain
+    hardcoded default, must not be allowed to leave the window partly
+    hanging off-screen or taller than the current screen's available area
+    (e.g. behind the taskbar) just because that is what was saved or
+    originally guessed.
     """
     data = QSettings().value(key)
-    if not isinstance(data, QByteArray):
-        return
-    probe = QWidget()
-    if not probe.restoreGeometry(data) or not _is_usable_geometry(probe.geometry()):
-        return
-    widget.restoreGeometry(data)
+    if isinstance(data, QByteArray):
+        probe = QWidget()
+        if probe.restoreGeometry(data) and _is_usable_geometry(probe.geometry()):
+            widget.restoreGeometry(data)
+    clamp_to_available_geometry(widget)
 
 
 def save_geometry(widget: QWidget, key: str) -> None:
     QSettings().setValue(key, widget.saveGeometry())
+
+
+def clamp_to_available_geometry(widget: QWidget) -> None:
+    """Shrinks and repositions widget so it fully fits its current
+    screen's available area (i.e. excluding the taskbar).
+
+    Only ever shrinks/moves, never grows a widget - a widget whose actual
+    minimum size (once its layout is built) is still larger than the
+    available area will be forced back up by Qt's own layout system
+    regardless of anything done here; that has to be fixed at the source
+    (fewer/lower fixed minimum heights, or a QScrollArea) rather than here.
+
+    Repositioning works in frameGeometry() terms (the window's actual
+    on-screen bounds, title bar included) rather than geometry() (just the
+    content area): clamping geometry() alone can still leave the title bar
+    itself poking out above the available area, exactly the "hangs behind
+    the taskbar" problem this exists to prevent.
+    """
+    screen = QGuiApplication.screenAt(widget.geometry().center()) or widget.screen()
+    if screen is None:
+        return
+    available = screen.availableGeometry()
+
+    width = min(widget.width(), available.width())
+    height = min(widget.height(), available.height())
+    if (width, height) != (widget.width(), widget.height()):
+        widget.resize(width, height)
+
+    frame = widget.frameGeometry()
+    dx = min(0, available.right() - frame.right())
+    dx = max(dx, available.x() - frame.x())
+    dy = min(0, available.bottom() - frame.bottom())
+    dy = max(dy, available.y() - frame.y())
+    if dx or dy:
+        widget.move(widget.x() + dx, widget.y() + dy)
 
 
 def _is_usable_geometry(rect: QRect) -> bool:

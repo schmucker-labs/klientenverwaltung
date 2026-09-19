@@ -4,12 +4,22 @@ from pathlib import Path
 
 _CONFIG_DIR_NAME = "Klientenverwaltung"
 _CONFIG_FILENAME = "config.json"
+_ERROR_LOG_FILENAME = "error.log"
 _LAST_KNOWN_DRIVE_PATH_KEY = "last_known_drive_path"
 _BACKUP_FOLDER_PATH_KEY = "backup_folder_path"
 
 
 def _config_path() -> Path:
     return Path(os.environ["APPDATA"]) / _CONFIG_DIR_NAME / _CONFIG_FILENAME
+
+
+def error_log_path() -> Path:
+    """Where unhandled-exception details get logged (see main._log_and_show_crash).
+
+    Same %APPDATA% folder as config.json - never client data, only
+    exception types/tracebacks/timestamps, so it's fine alongside it.
+    """
+    return Path(os.environ["APPDATA"]) / _CONFIG_DIR_NAME / _ERROR_LOG_FILENAME
 
 
 def _read_config() -> dict[str, str]:
