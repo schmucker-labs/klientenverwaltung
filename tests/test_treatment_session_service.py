@@ -260,3 +260,49 @@ def test_list_sessions_for_client_orders_newest_first(
 
     sessions = treatment_session_service.list_sessions_for_client(client.id)
     assert [s.id for s in sessions] == [newer.id, older.id]
+
+
+def test_get_session_summary_splits_past_and_future(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    now = datetime(2026, 6, 15, 12, 0)
+    treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 6, 1, 10, 0),
+        duration_minutes=60,
+    )
+    treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 7, 1, 10, 0),
+        duration_minutes=60,
+    )
+
+    summary = treatment_session_service.get_session_summary(client.id, now=now)
+
+    assert summary.last_session_date == datetime(2026, 6, 1, 10, 0)
+    assert summary.next_session_date == datetime(2026, 7, 1, 10, 0)
+
+
+def test_get_session_summary_does_not_treat_future_session_as_last(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    """The exact bug this method exists to fix: with only a future session,
+    "last" must stay None rather than picking the most recently created one."""
+    now = datetime(2026, 6, 15, 12, 0)
+    treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 7, 1, 10, 0),
+        duration_minutes=60,
+    )
+
+    summary = treatment_session_service.get_session_summary(client.id, now=now)
+
+    assert summary.last_session_date is None
+    assert summary.next_session_date == datetime(2026, 7, 1, 10, 0)

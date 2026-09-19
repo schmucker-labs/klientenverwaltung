@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,6 +17,21 @@ from klientenverwaltung.services.errors import (
     ValidationError,
 )
 from klientenverwaltung.services.transaction import transaction
+
+
+@dataclass(frozen=True)
+class SessionSummary:
+    """A client's last-past/next-future session date, as needed to show
+    "Letzte Sitzung"/"Nächste Sitzung" in the client detail view - the
+    exact same past/future split as the client list's "Letzte
+    Sitzung"/"Nächster Termin" columns, since both read it from
+    TreatmentSessionRepository.get_last_session_dates()/
+    get_upcoming_sessions() rather than each defining "last"/"next"
+    independently.
+    """
+
+    last_session_date: datetime | None
+    next_session_date: datetime | None
 
 
 class TreatmentSessionService:
@@ -69,6 +85,19 @@ class TreatmentSessionService:
     def list_sessions_for_client(self, client_id: int) -> list[TreatmentSession]:
         with self._session_factory() as session:
             return TreatmentSessionRepository(session).list_for_client(client_id)
+
+    def get_session_summary(
+        self, client_id: int, *, now: datetime | None = None
+    ) -> SessionSummary:
+        with self._session_factory() as session:
+            repo = TreatmentSessionRepository(session)
+            last_dates = repo.get_last_session_dates([client_id], now=now)
+            upcoming = repo.get_upcoming_sessions([client_id], now=now)
+        next_sessions = upcoming.get(client_id, [])
+        return SessionSummary(
+            last_session_date=last_dates.get(client_id),
+            next_session_date=next_sessions[0].date if next_sessions else None,
+        )
 
     def update_session(
         self,

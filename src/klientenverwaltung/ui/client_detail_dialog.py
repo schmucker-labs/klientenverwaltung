@@ -138,9 +138,12 @@ class ClientDetailDialog(QDialog):
         self._sessions_button.clicked.connect(self._on_sessions_clicked)
         self._sessions_last_date_label = QLabel(self)
         self._sessions_last_date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._sessions_next_date_label = QLabel(self)
+        self._sessions_next_date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sessions_section = QVBoxLayout()
         sessions_section.addWidget(self._sessions_button)
         sessions_section.addWidget(self._sessions_last_date_label)
+        sessions_section.addWidget(self._sessions_next_date_label)
 
         close_button = QPushButton("Schließen", self)
         close_button.clicked.connect(self.reject)
@@ -240,18 +243,31 @@ class ClientDetailDialog(QDialog):
                 "Sitzungen können hinzugefügt werden, nachdem der Klient "
                 "gespeichert wurde."
             )
+            self._sessions_next_date_label.setText("")
             return
         sessions = self._treatment_session_service.list_sessions_for_client(
             self._client_id
         )
         self._sessions_button.setEnabled(True)
         self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
-        if sessions:
-            self._sessions_last_date_label.setText(
-                f"Letzte Sitzung: {sessions[0].date.strftime('%d.%m.%Y')}"
-            )
-        else:
-            self._sessions_last_date_label.setText("Noch keine Sitzungen")
+        # Same past/future split as the client list's "Letzte
+        # Sitzung"/"Nächster Termin" columns (both read
+        # TreatmentSessionRepository.get_last_session_dates()/
+        # get_upcoming_sessions() via this one service method), so the two
+        # views can never disagree about what counts as "last" vs "next".
+        summary = self._treatment_session_service.get_session_summary(
+            self._client_id
+        )
+        self._sessions_last_date_label.setText(
+            f"Letzte Sitzung: {summary.last_session_date.strftime('%d.%m.%Y')}"
+            if summary.last_session_date is not None
+            else "Letzte Sitzung: keine"
+        )
+        self._sessions_next_date_label.setText(
+            f"Nächste Sitzung: {summary.next_session_date.strftime('%d.%m.%Y')}"
+            if summary.next_session_date is not None
+            else "Nächste Sitzung: keine"
+        )
 
     def _on_save_clicked(self) -> None:
         values = self._collect_form_values()

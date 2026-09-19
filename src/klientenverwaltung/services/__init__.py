@@ -11,6 +11,7 @@ from klientenverwaltung.services.errors import (
     ValidationError,
 )
 from klientenverwaltung.services.treatment_session_service import (
+    SessionSummary,
     TreatmentSessionService,
 )
 from klientenverwaltung.services.treatment_type_service import TreatmentTypeService
@@ -22,6 +23,7 @@ __all__ = [
     "NotFoundError",
     "ServiceError",
     "SessionOverlapError",
+    "SessionSummary",
     "TreatmentSessionService",
     "TreatmentTypeService",
     "UpcomingAppointment",
