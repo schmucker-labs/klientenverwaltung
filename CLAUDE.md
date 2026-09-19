@@ -119,6 +119,12 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 - Menüpunkt "Passwort ändern" (Rekey).
 - Bei jeder Verbindung: `PRAGMA foreign_keys = ON` und `PRAGMA synchronous = FULL`.
 - Das Passwort nie speichern oder loggen.
+- PySide6-Untermodule (QtSvg, QtSvgWidgets u. a.) werden von PyInstaller nicht
+  zuverlässig erkannt und müssen in HIDDEN_IMPORTS stehen. Bei jedem neuen Qt-Modul
+  im Code prüfen, ob es dort ergänzt werden muss.
+- Der Neustart der Anwendung (z. B. nach Wiederherstellung) muss sowohl aus der
+  Entwicklungsumgebung als auch aus der gebauten .exe funktionieren (sys.frozen
+  berücksichtigen); die alte Instanz zuerst vollständig beenden.
 
 ## MVP-Umfang
 
@@ -228,3 +234,6 @@ Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnv
 - Bei gestylten QSpinBox, QDoubleSpinBox und QDateTimeEdit immer up-button UND
   down-button vollständig definieren (Breite, Höhe, subcontrol-origin/-position),
   sonst wird eine der beiden Klickflächen winzig, obwohl der Pfeil normal aussieht.
+- "Letzte Sitzung" ist immer die jüngste Sitzung mit Datum in der VERGANGENHEIT,
+  "Nächster Termin"/"Nächste Sitzung" die nächste in der Zukunft. Beide Werte kommen
+  aus derselben Repository-Abfrage und werden nirgends erneut berechnet.

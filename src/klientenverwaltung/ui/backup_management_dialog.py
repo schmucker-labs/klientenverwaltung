@@ -41,6 +41,23 @@ _HEADER_STATE_SETTINGS_KEY = "backup_management/header_state"
 _FILENAME_COLUMN = 1
 
 
+def _relaunch_command() -> tuple[str, list[str]]:
+    """The (program, arguments) that exactly re-launch this application.
+
+    Frozen into a .exe (see klientenverwaltung.spec), sys.executable is
+    the .exe itself, so it is simply re-invoked with its own original
+    arguments. In a dev checkout, sys.executable is the interpreter, and
+    sys.argv[0] is whatever launched it - the `klientenverwaltung`
+    console-script shim on Windows is itself a small .exe stub, not a
+    .py file python.exe can run as a script argument - so the module is
+    named explicitly instead, which works regardless of how the dev
+    process was originally started.
+    """
+    if getattr(sys, "frozen", False):
+        return sys.executable, sys.argv[1:]
+    return sys.executable, ["-m", "klientenverwaltung.main", *sys.argv[1:]]
+
+
 class BackupManagementDialog(QDialog):
     def __init__(
         self, engine: Engine, drive_root: Path, parent: QWidget | None = None
@@ -290,11 +307,47 @@ class BackupManagementDialog(QDialog):
             parent=self,
         )
         self.done(QDialog.DialogCode.Accepted)
-        QProcess.startDetached(sys.executable, sys.argv)
-        self._quit_application()
+        self._restart_application()
 
     @staticmethod
     def _quit_application() -> None:
         app = QApplication.instance()
+        if isinstance(app, QApplication):
+            # closeAllWindows() first (not just quit()) so MainWindow's own
+            # closeEvent - geometry saving - still runs even though this
+            # exit was triggered from a dialog rather than the user closing
+            # the main window directly.
+            app.closeAllWindows()
+            app.quit()
+
+    @staticmethod
+    def _restart_application() -> None:
+        """Closes every window first (same reason as _quit_application()),
+        so MainWindow's geometry is saved and the DB engine (already
+        disposed by the caller) is fully released before a fresh instance
+        starts, then launches that instance and quits.
+
+        Deliberately a direct QProcess.startDetached() call, not routed
+        through a helper shell command to sequence it more strictly
+        against this process's own exit: confirmed with a headless
+        throwaway test build that relaunching this exact .exe via
+        PowerShell's Start-Process (or .NET's Process.Start) - even just
+        to wait for this process's PID to disappear first - reliably
+        breaks the relaunch outright (the new instance's bootloader never
+        reaches Python at all, no exception to even catch). A direct
+        QProcess.startDetached() call, by contrast, was confirmed
+        reliable in the same test even with this process deliberately
+        kept alive for 1.5s after spawning the child.
+        """
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.closeAllWindows()
+
+        program, arguments = _relaunch_command()
+        QProcess.startDetached(program, arguments)
+
+        if isinstance(app, QApplication):
+            app.quit()
+
         if isinstance(app, QApplication):
             app.quit()
