@@ -48,8 +48,18 @@ class PasswordDialog(QDialog):
 
 
 def ask_for_password(parent: QWidget | None = None) -> str | None:
-    """Shows the password dialog; returns None if the user cancelled."""
+    """Shows the password dialog; returns None if the user cancelled.
+
+    Explicitly shown, raised and activated before exec(): a splash screen
+    (Qt::SplashScreen) stays above ordinary windows by default, so without
+    this the dialog could end up hidden behind it, or visible but without
+    OS-level keyboard focus - the user would have to click it first before
+    typing.
+    """
     dialog = PasswordDialog(parent)
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
     if dialog.exec() == QDialog.DialogCode.Accepted:
         return dialog.password()
     return None

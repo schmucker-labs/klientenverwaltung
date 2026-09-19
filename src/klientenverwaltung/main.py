@@ -1,7 +1,9 @@
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QEasingCurve, QPropertyAnimation, QTimer
+from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
@@ -18,6 +20,10 @@ from klientenverwaltung.ui.main_window import MainWindow
 from klientenverwaltung.ui.password_dialog import ask_for_password
 from klientenverwaltung.ui.setup_wizard import SetupWizard
 from klientenverwaltung.ui.theme import apply_theme_mode, load_theme_mode
+
+_SPLASH_FADE_IN_MS = 700
+_SPLASH_HOLD_MS = 400
+_SPLASH_FADE_OUT_MS = 300
 
 
 def _open_database_or_none(db_path: Path) -> Engine | None:
@@ -108,26 +114,61 @@ def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
         return False
 
 
-def main() -> int:
-    # Only for QSettings (window geometry, column widths, splitter sizes) -
-    # never client data, which stays on the encrypted USB-Datenplatte.
-    QCoreApplication.setOrganizationName("Klientenverwaltung")
-    QCoreApplication.setApplicationName("Klientenverwaltung")
-
-    app = QApplication(sys.argv)
-    font = app.font()
-    font.setPointSize(font.pointSize() + 2)
-    app.setFont(font)
-    app.setWindowIcon(get_app_icon())
-    apply_theme_mode(load_theme_mode())
-
-    splash = QSplashScreen(load_svg_pixmap("splash"))
+def _show_splash() -> QSplashScreen:
+    """Shows the splash centered on whichever screen the mouse cursor is
+    currently on, invisible at first so _play_splash_intro() can fade it in.
+    """
+    screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+    splash = QSplashScreen(screen, load_svg_pixmap("splash"))
+    splash.setWindowOpacity(0.0)
     splash.show()
-    app.processEvents()
+    return splash
 
+
+def _play_splash_intro(splash: QSplashScreen, on_finished: Callable[[], None]) -> None:
+    """Fades `splash` in, holds it, then calls `on_finished` - via
+    QPropertyAnimation/QTimer only, so nothing here blocks the event loop
+    or delays whatever `on_finished` goes on to do.
+    """
+    fade_in = QPropertyAnimation(splash, b"windowOpacity", splash)
+    fade_in.setDuration(_SPLASH_FADE_IN_MS)
+    fade_in.setStartValue(0.0)
+    fade_in.setEndValue(1.0)
+    fade_in.setEasingCurve(QEasingCurve.Type.Linear)
+    fade_in.finished.connect(lambda: QTimer.singleShot(_SPLASH_HOLD_MS, on_finished))
+    fade_in.start()
+
+
+def _fade_out_splash(splash: QSplashScreen) -> None:
+    fade_out = QPropertyAnimation(splash, b"windowOpacity", splash)
+    fade_out.setDuration(_SPLASH_FADE_OUT_MS)
+    fade_out.setStartValue(splash.windowOpacity())
+    fade_out.setEndValue(0.0)
+    fade_out.setEasingCurve(QEasingCurve.Type.Linear)
+    fade_out.finished.connect(splash.close)
+    fade_out.start()
+
+
+def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
+    """Everything after the splash intro: login, startup backup,
+    migrations, main window.
+
+    Runs from inside the already-started Qt event loop (main() returned as
+    soon as it kicked off the splash intro), so a cancelled login or a
+    fatal startup error calls app.exit(...) instead of returning a value -
+    there is no more caller left to return to.
+
+    The splash stays fully visible - behind the password prompt and any
+    other dialog shown along the way - the whole time this runs; it only
+    fades out once the main window is ready, or closes immediately (no
+    fade) on every early-exit path below, so it never lingers on screen
+    after the process has already decided to quit.
+    """
     acquired = _acquire_drive_and_engine()
     if acquired is None:
-        return 0
+        splash.close()
+        app.exit(0)
+        return
     drive_root, engine = acquired
     app.aboutToQuit.connect(engine.dispose)
 
@@ -140,7 +181,9 @@ def main() -> int:
                 "gestartet, um die Daten nicht zu gefährden.",
                 title="Sicherung fehlgeschlagen",
             )
-            return 0
+            splash.close()
+            app.exit(0)
+            return
         show_error(
             "Es konnte keine automatische Sicherung erstellt werden. Bitte "
             "den Sicherungsordner in den Einstellungen prüfen.",
@@ -151,7 +194,9 @@ def main() -> int:
         storage.apply_migrations(engine)
     except storage.StorageError as exc:
         show_error(str(exc), title="Fehler")
-        return 0
+        splash.close()
+        app.exit(0)
+        return
 
     session_factory = sessionmaker(bind=engine, expire_on_commit=False)
     client_service = ClientService(session_factory)
@@ -166,7 +211,25 @@ def main() -> int:
         drive_root=drive_root,
     )
     window.show()
-    splash.finish(window)
+    _fade_out_splash(splash)
+
+
+def main() -> int:
+    # Only for QSettings (window geometry, column widths, splitter sizes) -
+    # never client data, which stays on the encrypted USB-Datenplatte.
+    QCoreApplication.setOrganizationName("Klientenverwaltung")
+    QCoreApplication.setApplicationName("Klientenverwaltung")
+
+    app = QApplication(sys.argv)
+    font = app.font()
+    font.setPointSize(font.pointSize() + 2)
+    app.setFont(font)
+    app.setWindowIcon(get_app_icon())
+    apply_theme_mode(load_theme_mode())
+
+    splash = _show_splash()
+    _play_splash_intro(splash, on_finished=lambda: _run_startup(app, splash))
+
     return app.exec()
 
 
