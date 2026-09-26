@@ -5,7 +5,9 @@ from PySide6.QtGui import QFont
 
 from klientenverwaltung.models import TreatmentSession
 
-COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)")
+COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Bericht")
+REPORT_COLUMN = 3
+_REPORT_CHECK = "✓"  # check mark
 
 
 class SessionTableModel(QAbstractTableModel):
@@ -61,6 +63,9 @@ class SessionTableModel(QAbstractTableModel):
                 return font
             return None
 
+        if role == Qt.ItemDataRole.TextAlignmentRole and column == REPORT_COLUMN:
+            return Qt.AlignmentFlag.AlignCenter
+
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         if column == 0:
@@ -69,4 +74,6 @@ class SessionTableModel(QAbstractTableModel):
             return session.treatment_type.name
         if column == 2:
             return str(session.duration_minutes)
+        if column == REPORT_COLUMN:
+            return _REPORT_CHECK if (session.report or session.impulses) else ""
         return None

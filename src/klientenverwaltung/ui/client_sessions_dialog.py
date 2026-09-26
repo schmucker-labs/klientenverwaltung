@@ -15,8 +15,13 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
+from klientenverwaltung.ui.report_dialog import ReportDialog
 from klientenverwaltung.ui.session_dialog import SessionDialog
-from klientenverwaltung.ui.session_table_model import COLUMN_TITLES, SessionTableModel
+from klientenverwaltung.ui.session_table_model import (
+    COLUMN_TITLES,
+    REPORT_COLUMN,
+    SessionTableModel,
+)
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -46,6 +51,7 @@ class ClientSessionsDialog(QDialog):
         self._treatment_type_service = treatment_type_service
         self._treatment_session_service = treatment_session_service
         self._client_id = client_id
+        self._client_name = client_name
 
         self.setWindowTitle(f"Sitzungen: {client_name}")
         self.setModal(True)
@@ -81,10 +87,11 @@ class ClientSessionsDialog(QDialog):
         )
         if not restored:
             self._session_table_view.resizeColumnsToContents()
+            self._session_table_view.setColumnWidth(REPORT_COLUMN, 60)
         # Behandlungsart (treatment type name) is the one open-ended,
         # variable-length column, so it gets the remaining space rather than
-        # stretching whichever column happens to be last - Dauer (Min.) is
-        # last and must stay a narrow, fixed-width numeric column.
+        # stretching whichever column happens to be last - Bericht is last
+        # and must stay a narrow, fixed-width checkmark column.
         finalize_column_widths(
             session_header, self._session_table_model.columnCount(), 1, restored
         )
@@ -93,17 +100,21 @@ class ClientSessionsDialog(QDialog):
             self._update_button_states
         )
 
+        self._report_button = QPushButton("Bericht", self)
         self._new_session_button = QPushButton("Neue Sitzung", self)
         self._edit_session_button = QPushButton("Bearbeiten", self)
         self._delete_session_button = QPushButton("Löschen", self)
+        self._report_button.setEnabled(False)
         self._edit_session_button.setEnabled(False)
         self._delete_session_button.setEnabled(False)
+        self._report_button.clicked.connect(self._on_report_clicked)
         self._new_session_button.clicked.connect(self._on_new_session_clicked)
         self._edit_session_button.clicked.connect(self._on_edit_session_clicked)
         self._delete_session_button.clicked.connect(self._on_delete_session_clicked)
 
         button_row = QHBoxLayout()
         button_row.addStretch()
+        button_row.addWidget(self._report_button)
         button_row.addWidget(self._new_session_button)
         button_row.addWidget(self._edit_session_button)
         button_row.addWidget(self._delete_session_button)
@@ -145,8 +156,23 @@ class ClientSessionsDialog(QDialog):
 
     def _update_button_states(self) -> None:
         has_selection = self._selected_session() is not None
+        self._report_button.setEnabled(has_selection)
         self._edit_session_button.setEnabled(has_selection)
         self._delete_session_button.setEnabled(has_selection)
+
+    def _on_report_clicked(self) -> None:
+        session = self._selected_session()
+        if session is None:
+            return
+        dialog = ReportDialog(
+            self._treatment_session_service, session, self._client_name, parent=self
+        )
+        # Always reload, not just on Accepted: Strg+S saves without closing,
+        # and even the "Abbrechen" -> "Speichern" prompt path can save
+        # before returning Rejected - so the dialog's result alone can't
+        # tell us whether the report checkmark needs to be refreshed.
+        dialog.exec()
+        self._reload_sessions()
 
     def _on_new_session_clicked(self) -> None:
         dialog = SessionDialog(
