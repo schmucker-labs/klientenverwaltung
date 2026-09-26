@@ -48,21 +48,9 @@ from klientenverwaltung import AUTHOR, __version__
 # hand. If env.py or a versions/*.py migration script ever needs a new
 # import nothing else in the app already uses, it goes here too.
 #
-# PySide6.QtSvg/QtSvgWidgets: icons.py imports QSvgRenderer from QtSvg as
-# an ordinary top-level import, which PyInstaller's static analysis does
-# see and normally bundles correctly on its own - confirmed missing only
-# once, specifically in the second instance launched by the backup-
-# restore restart (see backup_management_dialog._restart_application()
-# for what that turned out to actually be: a real, if narrow, race over
-# the onefile extraction directory when the old instance takes a moment
-# to fully exit, not a packaging gap). Named explicitly here anyway,
-# purely as cheap insurance, since PyInstaller's own detection is a
-# bundling heuristic, not a guarantee.
 HIDDEN_IMPORTS = [
     "sqlcipher3",
     "logging.config",
-    "PySide6.QtSvg",
-    "PySide6.QtSvgWidgets",
 ]
 
 

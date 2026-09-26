@@ -56,7 +56,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # Regenerate from ui/icons/logo.svg via scripts/generate_app_icon.py.
+    # Regenerate from ui/icons/logo.svg via scripts/generate_icons.py.
     icon=ICON_PATH,
     version=build_version_info(),
 )

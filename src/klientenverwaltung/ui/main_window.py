@@ -14,7 +14,7 @@ from klientenverwaltung.services import (
 from klientenverwaltung.ui.backup_management_dialog import BackupManagementDialog
 from klientenverwaltung.ui.client_list_widget import ClientListWidget
 from klientenverwaltung.ui.dialogs import show_about, show_error
-from klientenverwaltung.ui.icons import get_icon, load_svg_pixmap
+from klientenverwaltung.ui.icons import get_icon, load_pixmap
 from klientenverwaltung.ui.theme import (
     ThemeMode,
     apply_theme_mode,
@@ -158,7 +158,7 @@ class MainWindow(QMainWindow):
             "Klientenverwaltung",
             __version__,
             AUTHOR,
-            load_svg_pixmap("logo", QSize(64, 64)),
+            load_pixmap("logo", QSize(64, 64)),
             parent=self,
         )
 

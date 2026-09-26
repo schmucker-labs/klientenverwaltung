@@ -17,14 +17,14 @@ from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from klientenverwaltung import AUTHOR_SHORT, backup, config, storage
+from klientenverwaltung import backup, config, storage
 from klientenverwaltung.services import (
     ClientService,
     TreatmentSessionService,
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_retry, ask_retry_or_setup, show_error
-from klientenverwaltung.ui.icons import get_app_icon, load_svg_pixmap
+from klientenverwaltung.ui.icons import get_app_icon, load_pixmap
 from klientenverwaltung.ui.main_window import MainWindow
 from klientenverwaltung.ui.password_dialog import ask_for_password
 from klientenverwaltung.ui.setup_wizard import SetupWizard
@@ -146,9 +146,7 @@ def _show_splash() -> QSplashScreen:
     currently on, invisible at first so _play_splash_intro() can fade it in.
     """
     screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-    splash_pixmap = load_svg_pixmap(
-        "splash", substitutions={"__AUTHOR_SHORT__": AUTHOR_SHORT}
-    )
+    splash_pixmap = load_pixmap("splash")
     splash = QSplashScreen(screen, splash_pixmap)
     splash.setWindowOpacity(0.0)
     splash.show()
