@@ -17,7 +17,11 @@ from PySide6.QtWidgets import (
 from sqlalchemy import Engine
 
 from klientenverwaltung import backup, config, storage
-from klientenverwaltung.ui.backup_table_model import BackupEntry, BackupTableModel
+from klientenverwaltung.ui.backup_table_model import (
+    COLUMN_TITLES,
+    BackupEntry,
+    BackupTableModel,
+)
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     ask_confirm_restore,
@@ -88,7 +92,9 @@ class BackupManagementDialog(QDialog):
         self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         header = self._table_view.horizontalHeader()
         self._table_view.verticalHeader().setVisible(False)
-        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY)
+        restored = restore_header_state(
+            header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             # Datum, Größe and Herkunft only need their content's width on
             # first run; Dateiname is the one open-ended column, so it gets
@@ -138,7 +144,9 @@ class BackupManagementDialog(QDialog):
 
     def _save_header_state(self) -> None:
         save_header_state(
-            self._table_view.horizontalHeader(), _HEADER_STATE_SETTINGS_KEY
+            self._table_view.horizontalHeader(),
+            _HEADER_STATE_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def done(self, result: int) -> None:

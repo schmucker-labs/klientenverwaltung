@@ -16,7 +16,10 @@ from klientenverwaltung.ui.dialogs import (
     show_error,
 )
 from klientenverwaltung.ui.treatment_type_edit_dialog import TreatmentTypeEditDialog
-from klientenverwaltung.ui.treatment_type_table_model import TreatmentTypeTableModel
+from klientenverwaltung.ui.treatment_type_table_model import (
+    COLUMN_TITLES,
+    TreatmentTypeTableModel,
+)
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -62,7 +65,9 @@ class TreatmentTypeManagementDialog(QDialog):
         self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         header = self._table_view.horizontalHeader()
         self._table_view.verticalHeader().setVisible(False)
-        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY)
+        restored = restore_header_state(
+            header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             self._table_view.resizeColumnsToContents()
         # Beschreibung is the one open-ended, variable-length column.
@@ -194,7 +199,9 @@ class TreatmentTypeManagementDialog(QDialog):
 
     def _save_header_state(self) -> None:
         save_header_state(
-            self._table_view.horizontalHeader(), _HEADER_STATE_SETTINGS_KEY
+            self._table_view.horizontalHeader(),
+            _HEADER_STATE_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def done(self, result: int) -> None:

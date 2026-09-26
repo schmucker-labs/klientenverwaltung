@@ -42,7 +42,9 @@ class SessionTableModel(QAbstractTableModel):
             or orientation != Qt.Orientation.Horizontal
         ):
             return None
-        return COLUMN_TITLES[section]
+        if 0 <= section < len(COLUMN_TITLES):
+            return COLUMN_TITLES[section]
+        return None
 
     def data(
         self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole

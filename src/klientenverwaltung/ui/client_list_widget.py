@@ -18,7 +18,7 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
-from klientenverwaltung.ui.client_table_model import ClientTableModel
+from klientenverwaltung.ui.client_table_model import COLUMN_TITLES, ClientTableModel
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
@@ -61,7 +61,9 @@ class ClientListWidget(QWidget):
         self._table_view.setSortingEnabled(True)
         header = self._table_view.horizontalHeader()
         self._table_view.verticalHeader().setVisible(False)
-        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY)
+        restored = restore_header_state(
+            header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             self._table_view.setColumnWidth(0, 80)
         # Nächster Termin is the one open-ended column, so it gets whatever
@@ -114,7 +116,9 @@ class ClientListWidget(QWidget):
 
     def _save_header_state(self) -> None:
         save_header_state(
-            self._table_view.horizontalHeader(), _HEADER_STATE_SETTINGS_KEY
+            self._table_view.horizontalHeader(),
+            _HEADER_STATE_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def _apply_current_sort(self) -> None:

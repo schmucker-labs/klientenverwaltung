@@ -16,7 +16,7 @@ from klientenverwaltung.services import (
 )
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.session_dialog import SessionDialog
-from klientenverwaltung.ui.session_table_model import SessionTableModel
+from klientenverwaltung.ui.session_table_model import COLUMN_TITLES, SessionTableModel
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -76,7 +76,9 @@ class ClientSessionsDialog(QDialog):
         )
         session_header = self._session_table_view.horizontalHeader()
         self._session_table_view.verticalHeader().setVisible(False)
-        restored = restore_header_state(session_header, _TABLE_HEADER_SETTINGS_KEY)
+        restored = restore_header_state(
+            session_header, _TABLE_HEADER_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             self._session_table_view.resizeColumnsToContents()
         # Behandlungsart (treatment type name) is the one open-ended,
@@ -119,7 +121,9 @@ class ClientSessionsDialog(QDialog):
 
     def _save_table_header_state(self) -> None:
         save_header_state(
-            self._session_table_view.horizontalHeader(), _TABLE_HEADER_SETTINGS_KEY
+            self._session_table_view.horizontalHeader(),
+            _TABLE_HEADER_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def done(self, result: int) -> None:

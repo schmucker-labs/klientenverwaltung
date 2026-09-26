@@ -35,6 +35,15 @@ oder eine Tabelle mit Spalten hinzukommt.
   abgegeben, bis zur Mindestbreite. Dabei darf keine Spalte auf Stretch stehen, sonst
   verrutscht die Zuordnung der Trenner (siehe oben). Beim automatischen Anpassen kein
   Speichern in QSettings auslösen.
+- Gespeicherte Tabellen-Layouts (Spaltenbreiten, Reihenfolge, Sortierung) werden
+  verworfen, wenn sich die Spalten seit dem Speichern geändert haben (Anzahl oder
+  Überschriften) - sonst adressiert die wiederhergestellte Kopfzeile Spalten, die das
+  Modell nicht mehr hat, und headerData() stürzt ab. restore_header_state() vergleicht
+  dafür die aktuellen Spaltenüberschriften gegen die mitgespeicherten; bei einer
+  Abweichung wird der gespeicherte Zustand aus QSettings gelöscht und False
+  zurückgegeben, genau wie beim allerersten Start. headerData() bleibt trotzdem in
+  jedem Tabellenmodell defensiv (Index außerhalb des Bereichs -> None), als zweite,
+  unabhängige Absicherung.
 - Farben nie direkt im UI-Code, sondern ausschließlich über die zentral definierten
   Farbvariablen des aktiven Themes. Jedes Theme definiert vollständig: Hintergrund,
   Flächen, Text, Sekundärtext, Akzent, Sekundärakzent, Linien, Hover, markierte Zeile

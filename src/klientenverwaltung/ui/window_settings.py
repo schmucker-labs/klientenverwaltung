@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from PySide6.QtCore import (
     QByteArray,
     QEvent,
@@ -84,12 +86,30 @@ def _is_usable_geometry(rect: QRect) -> bool:
     )
 
 
-def restore_header_state(header: QHeaderView, key: str) -> bool:
+def _column_titles_key(key: str) -> str:
+    return f"{key}/columns"
+
+
+def restore_header_state(
+    header: QHeaderView, key: str, column_titles: Sequence[str]
+) -> bool:
     """Restores a saved column layout (widths, order, sort, resize modes).
 
     Always enforces MIN_COLUMN_WIDTH first, regardless of outcome. Returns
     True if a saved state was found and applied; False on first run, so the
     caller can apply its own content-based default widths instead.
+
+    A saved state is only applied if it was saved for the exact same
+    column headings, in the same order. Table models gain/lose columns
+    over time (schema changes, feature work), and restoreState() otherwise
+    happily reapplies a layout sized for a different column count - the
+    view then addresses columns the model no longer has, which crashes
+    headerData(). On a mismatch (including one saved by an older version
+    of this code, before column_titles was recorded at all) the saved
+    state is discarded outright (removed from QSettings, not just
+    ignored) and this returns False so the caller's own default widths
+    apply, exactly as on a genuine first run. Applies to every caller,
+    not just one particular table.
 
     restoreState() also restores each section's resize mode and the
     stretchLastSection flag exactly as they were when saveState() ran. A
@@ -99,12 +119,24 @@ def restore_header_state(header: QHeaderView, key: str) -> bool:
     fix, for any user who already has a saved header state.
     """
     header.setMinimumSectionSize(MIN_COLUMN_WIDTH)
-    data = QSettings().value(key)
+    settings = QSettings()
+    columns_key = _column_titles_key(key)
+    saved_columns = settings.value(columns_key)
+    saved_columns = list(saved_columns) if saved_columns is not None else None
+    if saved_columns != list(column_titles):
+        settings.remove(key)
+        settings.remove(columns_key)
+        return False
+    data = settings.value(key)
     return isinstance(data, QByteArray) and header.restoreState(data)
 
 
-def save_header_state(header: QHeaderView, key: str) -> None:
-    QSettings().setValue(key, header.saveState())
+def save_header_state(
+    header: QHeaderView, key: str, column_titles: Sequence[str]
+) -> None:
+    settings = QSettings()
+    settings.setValue(key, header.saveState())
+    settings.setValue(_column_titles_key(key), list(column_titles))
 
 
 def finalize_column_widths(
