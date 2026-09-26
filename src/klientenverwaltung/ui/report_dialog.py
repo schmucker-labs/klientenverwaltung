@@ -1,8 +1,12 @@
-from PySide6.QtCore import QMimeData, QSignalBlocker, Qt, Signal
+from PySide6.QtCore import QMimeData, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import (
+    QColor,
     QFocusEvent,
     QFont,
+    QIcon,
     QKeySequence,
+    QPainter,
+    QPixmap,
     QResizeEvent,
     QShortcut,
     QTextCharFormat,
@@ -28,10 +32,12 @@ from PySide6.QtWidgets import (
 from klientenverwaltung.models import TreatmentSession
 from klientenverwaltung.services import ServiceError, TreatmentSessionService
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
+from klientenverwaltung.ui.theme import ColorPalette, get_palette, load_theme_mode
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _GEOMETRY_SETTINGS_KEY = "report/geometry"
 _MIN_VISIBLE_LINES = 8
+_TOOLBAR_ICON_SIZE = 20
 _STYLE_NAMES = ("Normal", "Überschrift 1", "Überschrift 2", "Überschrift 3")
 _MAX_HEADING_LEVEL = len(_STYLE_NAMES) - 1
 # A relative size step per heading level, not a stored point size - see
@@ -236,24 +242,32 @@ class ReportDialog(QDialog):
         # our own programmatic updates in _update_toolbar_state()).
         self._style_combo.activated.connect(self._return_focus_to_active_editor)
 
-        self._bold_button = self._make_toggle_button("F", "Fett", "Ctrl+B")
-        self._style_toolbar_button_font(self._bold_button, bold=True)
+        # Current theme only: this dialog is application-modal, so the
+        # user cannot reach the main window's theme toggle while it is
+        # open - no live-refresh path is needed for these icons.
+        palette = get_palette(load_theme_mode())
+
+        self._bold_button, self._bold_icons = self._make_letter_button(
+            "F", "Fett", "Ctrl+B", palette, bold=True
+        )
         self._bold_button.clicked.connect(self._toggle_bold)
 
-        self._italic_button = self._make_toggle_button("K", "Kursiv", "Ctrl+I")
-        self._style_toolbar_button_font(
-            self._italic_button,
+        self._italic_button, self._italic_icons = self._make_letter_button(
+            "K",
+            "Kursiv",
+            "Ctrl+I",
+            palette,
             italic=True,
             weight=QFont.Weight.DemiBold,
             point_size_delta=2,
         )
         self._italic_button.clicked.connect(self._toggle_italic)
 
-        self._underline_button = self._make_toggle_button(
-            "U", "Unterstrichen", "Ctrl+U"
-        )
-        self._style_toolbar_button_font(
-            self._underline_button,
+        self._underline_button, self._underline_icons = self._make_letter_button(
+            "U",
+            "Unterstrichen",
+            "Ctrl+U",
+            palette,
             underline=True,
             weight=QFont.Weight.DemiBold,
             point_size_delta=2,
@@ -271,12 +285,29 @@ class ReportDialog(QDialog):
         toolbar.setLayout(row)
         return toolbar
 
-    def _make_toggle_button(
-        self, text: str, tooltip: str, shortcut: str
-    ) -> QPushButton:
-        button = QPushButton(text, self)
+    def _make_letter_button(
+        self,
+        letter: str,
+        tooltip: str,
+        shortcut: str,
+        palette: ColorPalette,
+        *,
+        bold: bool = False,
+        italic: bool = False,
+        underline: bool = False,
+        weight: QFont.Weight | None = None,
+        point_size_delta: int = 0,
+    ) -> tuple[QPushButton, tuple[QIcon, QIcon]]:
+        """A checkable button showing `letter` as an icon (not text) - see
+        _render_letter_icon() for why. Returns the button plus its
+        (unchecked, checked) icon pair, one in the theme's normal text
+        color and one in its checked/on-accent contrast color, so
+        _update_toolbar_state() can swap between them without re-rendering.
+        """
+        button = QPushButton(self)
         button.setCheckable(True)
         button.setFixedWidth(36)
+        button.setIconSize(QSize(_TOOLBAR_ICON_SIZE, _TOOLBAR_ICON_SIZE))
         button.setToolTip(f"{tooltip} (Strg+{shortcut[-1]})")
         button.setShortcut(QKeySequence(shortcut))
         # Never takes keyboard focus, so clicking it (or its shortcut) never
@@ -284,32 +315,48 @@ class ReportDialog(QDialog):
         # shortcut still works via the window-wide QShortcut context, and a
         # mouse click still activates the button regardless of focus policy.
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        return button
 
-    @staticmethod
-    def _style_toolbar_button_font(
-        button: QPushButton,
+        font_kwargs = {
+            "bold": bold,
+            "italic": italic,
+            "underline": underline,
+            "weight": weight,
+            "point_size_delta": point_size_delta,
+        }
+        icons = (
+            self._render_letter_icon(letter, color=palette.text, **font_kwargs),
+            self._render_letter_icon(
+                letter, color=palette.surface_panel, **font_kwargs
+            ),
+        )
+        button.setIcon(icons[0])
+        return button, icons
+
+    def _render_letter_icon(
+        self,
+        letter: str,
         *,
+        color: str,
         bold: bool = False,
         italic: bool = False,
         underline: bool = False,
         weight: QFont.Weight | None = None,
         point_size_delta: int = 0,
-    ) -> None:
-        """Only these three buttons' font - never the whole app's, see
-        docs/ui-regeln.md. NoSubpixelAntialias forces plain grayscale
-        anti-aliasing instead of ClearType, which otherwise fringes the
-        thin diagonal strokes of an italic K and U's underline bar with
-        visible orange/blue color. DemiBold plus a couple points larger
-        (K/U only - F is already bold at the normal size) gives ClearType's
-        replacement grayscale rendering strokes wide enough to still read
-        clearly instead of thinning out to single, slightly blurry pixels.
+    ) -> QIcon:
+        """Renders `letter` offscreen onto a transparent pixmap, in `color`.
+
+        QFont.StyleStrategy.NoSubpixelAntialias alone does not reliably
+        stop ClearType from fringing the thin diagonal strokes of an
+        italic K, or U's underline bar, with visible orange/blue color -
+        Windows' native DirectWrite text backend does not honor it for a
+        widget's own natively drawn label. Painting the glyph offscreen
+        onto an alpha-blended QPixmap instead sidesteps the question
+        entirely: subpixel/ClearType rendering fundamentally requires
+        compositing against known-opaque screen pixels, so Qt's raster
+        engine always falls back to plain grayscale antialiasing here,
+        regardless of style strategy.
         """
-        font = button.font()
-        font.setStyleStrategy(
-            QFont.StyleStrategy.PreferAntialias
-            | QFont.StyleStrategy.NoSubpixelAntialias
-        )
+        font = QFont(self.font())
         if bold:
             font.setBold(True)
         if weight is not None:
@@ -320,7 +367,17 @@ class ReportDialog(QDialog):
             font.setUnderline(True)
         if point_size_delta and font.pointSize() > 0:
             font.setPointSize(font.pointSize() + point_size_delta)
-        button.setFont(font)
+
+        pixmap = QPixmap(_TOOLBAR_ICON_SIZE, _TOOLBAR_ICON_SIZE)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.setFont(font)
+        painter.setPen(QColor(color))
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, letter)
+        painter.end()
+        return QIcon(pixmap)
 
     @staticmethod
     def _build_labeled_field(label_text: str, field: QTextEdit) -> QWidget:
@@ -363,16 +420,22 @@ class ReportDialog(QDialog):
         cursor = self._active_editor.textCursor()
         char_format = cursor.charFormat()
         heading_level = min(cursor.blockFormat().headingLevel(), _MAX_HEADING_LEVEL)
+        bold_active = char_format.fontWeight() == QFont.Weight.Bold
+        italic_active = char_format.fontItalic()
+        underline_active = char_format.fontUnderline()
         with (
             QSignalBlocker(self._bold_button),
             QSignalBlocker(self._italic_button),
             QSignalBlocker(self._underline_button),
             QSignalBlocker(self._style_combo),
         ):
-            self._bold_button.setChecked(char_format.fontWeight() == QFont.Weight.Bold)
-            self._italic_button.setChecked(char_format.fontItalic())
-            self._underline_button.setChecked(char_format.fontUnderline())
+            self._bold_button.setChecked(bold_active)
+            self._italic_button.setChecked(italic_active)
+            self._underline_button.setChecked(underline_active)
             self._style_combo.setCurrentIndex(heading_level)
+        self._bold_button.setIcon(self._bold_icons[bold_active])
+        self._italic_button.setIcon(self._italic_icons[italic_active])
+        self._underline_button.setIcon(self._underline_icons[underline_active])
 
     def _toggle_bold(self) -> None:
         editor = self._active_editor
