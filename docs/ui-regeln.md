@@ -8,7 +8,7 @@ oder eine Tabelle mit Spalten hinzukommt.
 - Service-Fehler abfangen und die deutsche Meldung in einer QMessageBox zeigen. Niemals ein Traceback.
 - Ausreichend große Schrift und Klickflächen. Der Anwender ist kein Techniker und sitzt eventuell nicht optimal vor dem Bildschirm.
 - Keine Geschäftslogik in der Oberfläche. Wenn Claude Code anfängt, im Fenstercode zu validieren, gehört das in die Services.
-- Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnvoller Reihenfolge durch die Felder. Bei Dateneingabe spart das spürbar Zeit.
+- Tastatur nicht vergessen: Enter speichert, Escape schließt, Tab läuft in sinnvoller Reihenfolge durch die Felder. Bei Dateneingabe spart das spürbar Zeit. Ausnahme: in mehrzeiligen Texteditoren (QTextEdit) erzeugt Enter immer einen Zeilenumbruch; Speichern läuft dort über Strg+S (ohne zu schließen) bzw. Strg+Enter/Strg+Return (speichert und schließt).
 
 - Jedes Fenster und jeder Dialog merkt sich Fenstergröße, Position, Spaltenbreiten,
   Sortierung und Splitter-Aufteilung über QSettings unter einem eigenen Schlüssel.
@@ -44,6 +44,19 @@ oder eine Tabelle mit Spalten hinzukommt.
   zurückgegeben, genau wie beim allerersten Start. headerData() bleibt trotzdem in
   jedem Tabellenmodell defensiv (Index außerhalb des Bereichs -> None), als zweite,
   unabhängige Absicherung.
+- Rich-Text-Felder (QTextEdit mit Formatierung, z. B. das Berichtsfenster): nie eine
+  eigene Textfarbe, immer die Textfarbe des aktiven Themes - dafür wird gar keine
+  Vordergrundfarbe im Zeichenformat gesetzt, dann folgt die Anzeige automatisch der
+  Theme-Stylesheet-Farbe, auch bei einem Theme-Wechsel im laufenden Betrieb. Beim
+  Einfügen (insertFromMimeData überschreiben) und zusätzlich vor dem Speichern werden
+  Vordergrundfarbe, Hintergrundfarbe, Schriftart und Schriftgröße aus jedem
+  Zeichenformat entfernt (zwei unabhängige Stellen, nicht nur eine); erhalten bleiben
+  nur fett, kursiv, unterstrichen und die Überschriftsebene. Überschriften bekommen
+  ihre Größe über eine relative Größenanpassung der Überschriftsebene, nie über eine
+  gespeicherte Punktgröße - sonst würde das Entfernen der Schriftgröße auch die
+  Überschrift wieder einebnen. Leerer Inhalt (auch ein rein aus Leerzeichen
+  bestehendes Rich-Text-Dokument) wird beim Speichern als NULL/None abgelegt, nie als
+  leerer String.
 - Farben nie direkt im UI-Code, sondern ausschließlich über die zentral definierten
   Farbvariablen des aktiven Themes. Jedes Theme definiert vollständig: Hintergrund,
   Flächen, Text, Sekundärtext, Akzent, Sekundärakzent, Linien, Hover, markierte Zeile

@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QApplication
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -12,6 +13,14 @@ from klientenverwaltung.services import (
     TreatmentSessionService,
     TreatmentTypeService,
 )
+
+
+@pytest.fixture(scope="session")
+def qapp() -> QApplication:
+    """A QApplication instance, required before constructing any Qt GUI
+    object (QTextDocument, QWidget, ...) in a test - shared across the
+    whole test session since only one may ever exist per process."""
+    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture

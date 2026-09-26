@@ -8,11 +8,6 @@ from PySide6.QtWidgets import QApplication, QHeaderView, QTableView
 from klientenverwaltung.ui import window_settings
 
 
-@pytest.fixture(scope="session")
-def qapp() -> QApplication:
-    return QApplication.instance() or QApplication([])
-
-
 @pytest.fixture
 def isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Points window_settings.QSettings() at a private ini file for the
