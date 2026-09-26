@@ -237,23 +237,27 @@ class ReportDialog(QDialog):
         self._style_combo.activated.connect(self._return_focus_to_active_editor)
 
         self._bold_button = self._make_toggle_button("F", "Fett", "Ctrl+B")
-        bold_font = self._bold_button.font()
-        bold_font.setBold(True)
-        self._bold_button.setFont(bold_font)
+        self._style_toolbar_button_font(self._bold_button, bold=True)
         self._bold_button.clicked.connect(self._toggle_bold)
 
         self._italic_button = self._make_toggle_button("K", "Kursiv", "Ctrl+I")
-        italic_font = self._italic_button.font()
-        italic_font.setItalic(True)
-        self._italic_button.setFont(italic_font)
+        self._style_toolbar_button_font(
+            self._italic_button,
+            italic=True,
+            weight=QFont.Weight.DemiBold,
+            point_size_delta=2,
+        )
         self._italic_button.clicked.connect(self._toggle_italic)
 
         self._underline_button = self._make_toggle_button(
             "U", "Unterstrichen", "Ctrl+U"
         )
-        underline_font = self._underline_button.font()
-        underline_font.setUnderline(True)
-        self._underline_button.setFont(underline_font)
+        self._style_toolbar_button_font(
+            self._underline_button,
+            underline=True,
+            weight=QFont.Weight.DemiBold,
+            point_size_delta=2,
+        )
         self._underline_button.clicked.connect(self._toggle_underline)
 
         row = QHBoxLayout()
@@ -281,6 +285,42 @@ class ReportDialog(QDialog):
         # mouse click still activates the button regardless of focus policy.
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         return button
+
+    @staticmethod
+    def _style_toolbar_button_font(
+        button: QPushButton,
+        *,
+        bold: bool = False,
+        italic: bool = False,
+        underline: bool = False,
+        weight: QFont.Weight | None = None,
+        point_size_delta: int = 0,
+    ) -> None:
+        """Only these three buttons' font - never the whole app's, see
+        docs/ui-regeln.md. NoSubpixelAntialias forces plain grayscale
+        anti-aliasing instead of ClearType, which otherwise fringes the
+        thin diagonal strokes of an italic K and U's underline bar with
+        visible orange/blue color. DemiBold plus a couple points larger
+        (K/U only - F is already bold at the normal size) gives ClearType's
+        replacement grayscale rendering strokes wide enough to still read
+        clearly instead of thinning out to single, slightly blurry pixels.
+        """
+        font = button.font()
+        font.setStyleStrategy(
+            QFont.StyleStrategy.PreferAntialias
+            | QFont.StyleStrategy.NoSubpixelAntialias
+        )
+        if bold:
+            font.setBold(True)
+        if weight is not None:
+            font.setWeight(weight)
+        if italic:
+            font.setItalic(True)
+        if underline:
+            font.setUnderline(True)
+        if point_size_delta and font.pointSize() > 0:
+            font.setPointSize(font.pointSize() + point_size_delta)
+        button.setFont(font)
 
     @staticmethod
     def _build_labeled_field(label_text: str, field: QTextEdit) -> QWidget:
