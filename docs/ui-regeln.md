@@ -57,6 +57,22 @@ oder eine Tabelle mit Spalten hinzukommt.
   Überschrift wieder einebnen. Leerer Inhalt (auch ein rein aus Leerzeichen
   bestehendes Rich-Text-Dokument) wird beim Speichern als NULL/None abgelegt, nie als
   leerer String.
+- Werkzeugleisten-Buttons neben einem Textfeld (z. B. Fett/Kursiv/Unterstrichen im
+  Berichtsfenster) bekommen `Qt.FocusPolicy.NoFocus`, damit ein Klick den Fokus im
+  Textfeld belässt und sofort weitergetippt werden kann - Maus-Klick und Tastenkürzel
+  funktionieren trotzdem unverändert. Eine Auswahlbox in derselben Leiste, die zum
+  Aufklappen selbst Fokus braucht (z. B. die Überschriften-Auswahl), gibt den Fokus
+  nach einer echten Auswahl (Signal `activated`, nicht `currentIndexChanged` - das
+  feuert auch bei einer rein programmatischen Aktualisierung) an das zuletzt aktive
+  Textfeld zurück.
+- Umschalt-Buttons (checkable QPushButton) zeigen ihren aktiven Zustand ausschließlich
+  über `:checked` mit der Akzentfarbe des Themes und kontrastreicher Schrift, deutlich
+  vom inaktiven Zustand unterscheidbar in Light UND Dark - dazu `:checked:hover`,
+  `:checked:pressed` und `:checked:disabled` ebenso definieren wie die unmarkierten
+  Zustände (siehe Regel oben zu vollständig ersetztem nativem Stil). Wird der Zustand
+  programmatisch aktualisiert (z. B. nach einer Cursor-Bewegung), dabei die Signale
+  jedes betroffenen Widgets blockieren, damit das Anzeigen selbst nicht wieder eine
+  Formatierung auslöst oder den Fokus verschiebt.
 - Farben nie direkt im UI-Code, sondern ausschließlich über die zentral definierten
   Farbvariablen des aktiven Themes. Jedes Theme definiert vollständig: Hintergrund,
   Flächen, Text, Sekundärtext, Akzent, Sekundärakzent, Linien, Hover, markierte Zeile

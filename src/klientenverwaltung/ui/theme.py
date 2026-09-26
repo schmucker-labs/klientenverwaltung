@@ -375,6 +375,26 @@ def build_stylesheet(palette: ColorPalette) -> str:
             border: 1px solid {p.accent};
             color: {p.text};
         }}
+        QPushButton:checked {{
+            background-color: {p.accent};
+            color: {p.surface_panel};
+            border: 1px solid {p.accent};
+        }}
+        QPushButton:checked:hover {{
+            background-color: {p.accent_secondary};
+            color: {p.surface_panel};
+            border: 1px solid {p.accent_secondary};
+        }}
+        QPushButton:checked:pressed {{
+            background-color: {p.accent_secondary};
+            color: {p.surface_panel};
+            border: 1px solid {p.accent_secondary};
+        }}
+        QPushButton:checked:disabled {{
+            background-color: {p.text_disabled};
+            color: {p.surface_panel};
+            border: 1px solid {p.text_disabled};
+        }}
 
         QCheckBox {{
             color: {p.text};

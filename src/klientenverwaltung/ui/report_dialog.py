@@ -202,7 +202,7 @@ class ReportDialog(QDialog):
         )
         button_box.addButton("Abbrechen", QDialogButtonBox.ButtonRole.RejectRole)
         self._save_button.setEnabled(False)
-        button_box.accepted.connect(self._on_save_clicked)
+        button_box.accepted.connect(self._on_save_and_close)
         button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
@@ -229,6 +229,12 @@ class ReportDialog(QDialog):
         self._style_combo = QComboBox(self)
         self._style_combo.addItems(_STYLE_NAMES)
         self._style_combo.currentIndexChanged.connect(self._on_style_changed)
+        # The combo needs focus to open its popup at all, so - unlike the
+        # NoFocus toggle buttons - it can't avoid taking focus. Give it back
+        # to whichever field was active as soon as a real selection is made
+        # (activated, not currentIndexChanged - the latter also fires for
+        # our own programmatic updates in _update_toolbar_state()).
+        self._style_combo.activated.connect(self._return_focus_to_active_editor)
 
         self._bold_button = self._make_toggle_button("F", "Fett", "Ctrl+B")
         bold_font = self._bold_button.font()
@@ -269,6 +275,11 @@ class ReportDialog(QDialog):
         button.setFixedWidth(36)
         button.setToolTip(f"{tooltip} (Strg+{shortcut[-1]})")
         button.setShortcut(QKeySequence(shortcut))
+        # Never takes keyboard focus, so clicking it (or its shortcut) never
+        # moves focus out of whichever text field is being edited - the
+        # shortcut still works via the window-wide QShortcut context, and a
+        # mouse click still activates the button regardless of focus policy.
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         return button
 
     @staticmethod
@@ -299,14 +310,28 @@ class ReportDialog(QDialog):
         self._active_editor = editor
         self._update_toolbar_state()
 
+    def _return_focus_to_active_editor(self, _index: int) -> None:
+        self._active_editor.setFocus()
+
     def _update_toolbar_state(self) -> None:
+        """Reflects the active editor's format at the cursor in the
+        toolbar. Blocks every widget's own signals while doing so - this
+        only ever displays the current state, it must never itself count
+        as a user action that re-triggers a format change or a focus
+        hand-back.
+        """
         cursor = self._active_editor.textCursor()
         char_format = cursor.charFormat()
-        self._bold_button.setChecked(char_format.fontWeight() == QFont.Weight.Bold)
-        self._italic_button.setChecked(char_format.fontItalic())
-        self._underline_button.setChecked(char_format.fontUnderline())
         heading_level = min(cursor.blockFormat().headingLevel(), _MAX_HEADING_LEVEL)
-        with QSignalBlocker(self._style_combo):
+        with (
+            QSignalBlocker(self._bold_button),
+            QSignalBlocker(self._italic_button),
+            QSignalBlocker(self._underline_button),
+            QSignalBlocker(self._style_combo),
+        ):
+            self._bold_button.setChecked(char_format.fontWeight() == QFont.Weight.Bold)
+            self._italic_button.setChecked(char_format.fontItalic())
+            self._underline_button.setChecked(char_format.fontUnderline())
             self._style_combo.setCurrentIndex(heading_level)
 
     def _toggle_bold(self) -> None:
