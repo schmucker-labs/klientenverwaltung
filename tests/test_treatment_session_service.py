@@ -25,7 +25,6 @@ def test_create_session_persists(
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 3, 1, 9, 30),
         duration_minutes=60,
-        notes="Erste Sitzung",
     )
 
     fetched = treatment_session_service.get_session(session_entry.id)
@@ -170,7 +169,6 @@ def test_update_session_does_not_flag_overlap_with_itself(
         treatment_type_id=treatment_type.id,
         date=treatment_session.date,
         duration_minutes=90,
-        notes="Verlängert",
     )
 
     assert updated.duration_minutes == 90
@@ -209,12 +207,10 @@ def test_update_session_changes_fields(
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 4, 1, 8, 0),
         duration_minutes=45,
-        notes="Angepasst",
     )
 
     assert updated.date == datetime(2026, 4, 1, 8, 0)
     assert updated.duration_minutes == 45
-    assert updated.notes == "Angepasst"
 
 
 def test_delete_session(
@@ -306,3 +302,56 @@ def test_get_session_summary_does_not_treat_future_session_as_last(
 
     assert summary.last_session_date is None
     assert summary.next_session_date == datetime(2026, 7, 1, 10, 0)
+
+
+def test_save_report_persists_report_and_impulses(
+    treatment_session_service: TreatmentSessionService,
+    treatment_session: TreatmentSession,
+) -> None:
+    updated = treatment_session_service.save_report(
+        treatment_session.id,
+        report="<p>Ruhiger Verlauf.</p>",
+        impulses="<p>Weiter Atemübungen.</p>",
+    )
+
+    fetched = treatment_session_service.get_session(treatment_session.id)
+    assert updated.report == "<p>Ruhiger Verlauf.</p>"
+    assert fetched.report == "<p>Ruhiger Verlauf.</p>"
+    assert fetched.impulses == "<p>Weiter Atemübungen.</p>"
+
+
+def test_save_report_unknown_session_raises_not_found(
+    treatment_session_service: TreatmentSessionService,
+) -> None:
+    with pytest.raises(NotFoundError):
+        treatment_session_service.save_report(999, report="Text", impulses=None)
+
+
+@pytest.mark.parametrize(
+    "blank_value",
+    [
+        None,
+        "",
+        "   \n\t ",
+        "<p>   </p><p><br/></p>",
+        # A realistic empty Qt QTextEdit document: only whitespace text
+        # content, but with a <style> block whose CSS text must not be
+        # mistaken for real content.
+        """<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
+<html><head><meta name="qrichtext" content="1" /><style type="text/css">
+p, li { white-space: pre-wrap; }
+</style></head><body style=" font-family:'Segoe UI';">
+<p style=" margin-top:0px;"><br /></p></body></html>""",
+    ],
+)
+def test_save_report_blank_content_stored_as_none(
+    treatment_session_service: TreatmentSessionService,
+    treatment_session: TreatmentSession,
+    blank_value: str | None,
+) -> None:
+    updated = treatment_session_service.save_report(
+        treatment_session.id, report=blank_value, impulses=blank_value
+    )
+
+    assert updated.report is None
+    assert updated.impulses is None

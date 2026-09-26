@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QSpinBox,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -67,13 +66,10 @@ class SessionDialog(QDialog):
         self._duration_spinbox.setValue(_DEFAULT_DURATION_MINUTES)
         self._duration_spinbox.setSuffix(" Min.")
 
-        self._notes_edit = QTextEdit(self)
-
         form = QFormLayout()
         form.addRow("Datum/Uhrzeit:", self._date_edit)
         form.addRow("Behandlungsart:", self._treatment_type_combo)
         form.addRow("Dauer:", self._duration_spinbox)
-        form.addRow("Notizen:", self._notes_edit)
 
         button_box = QDialogButtonBox(self)
         save_button = button_box.addButton(
@@ -94,7 +90,6 @@ class SessionDialog(QDialog):
             if index >= 0:
                 self._treatment_type_combo.setCurrentIndex(index)
             self._duration_spinbox.setValue(session.duration_minutes)
-            self._notes_edit.setPlainText(session.notes or "")
         else:
             self._date_edit.setDateTime(QDateTime(datetime.now()))
 
@@ -105,7 +100,6 @@ class SessionDialog(QDialog):
             "date": self._date_edit.dateTime().toPython(),
             "treatment_type_id": self._treatment_type_combo.currentData(),
             "duration_minutes": self._duration_spinbox.value(),
-            "notes": self._notes_edit.toPlainText().strip() or None,
         }
 
     def _is_dirty(self) -> bool:
@@ -120,7 +114,6 @@ class SessionDialog(QDialog):
                     treatment_type_id=values["treatment_type_id"],
                     date=values["date"],
                     duration_minutes=values["duration_minutes"],
-                    notes=values["notes"],
                 )
                 self._session_id = treatment_session.id
             else:
@@ -129,7 +122,6 @@ class SessionDialog(QDialog):
                     treatment_type_id=values["treatment_type_id"],
                     date=values["date"],
                     duration_minutes=values["duration_minutes"],
-                    notes=values["notes"],
                 )
         except ServiceError as exc:
             show_error(str(exc), parent=self)

@@ -1,4 +1,3 @@
-from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -17,8 +16,7 @@ from klientenverwaltung.services import (
 )
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.session_dialog import SessionDialog
-from klientenverwaltung.ui.session_note_dialog import SessionNoteDialog
-from klientenverwaltung.ui.session_table_model import NOTE_COLUMN, SessionTableModel
+from klientenverwaltung.ui.session_table_model import SessionTableModel
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -81,11 +79,10 @@ class ClientSessionsDialog(QDialog):
         restored = restore_header_state(session_header, _TABLE_HEADER_SETTINGS_KEY)
         if not restored:
             self._session_table_view.resizeColumnsToContents()
-            self._session_table_view.setColumnWidth(NOTE_COLUMN, 40)
         # Behandlungsart (treatment type name) is the one open-ended,
         # variable-length column, so it gets the remaining space rather than
-        # stretching whichever column happens to be last - Notiz is last and
-        # must stay a narrow, fixed-width icon column.
+        # stretching whichever column happens to be last - Dauer (Min.) is
+        # last and must stay a narrow, fixed-width numeric column.
         finalize_column_widths(
             session_header, self._session_table_model.columnCount(), 1, restored
         )
@@ -93,7 +90,6 @@ class ClientSessionsDialog(QDialog):
         self._session_table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
         )
-        self._session_table_view.clicked.connect(self._on_table_clicked)
 
         self._new_session_button = QPushButton("Neue Sitzung", self)
         self._edit_session_button = QPushButton("Bearbeiten", self)
@@ -164,16 +160,6 @@ class ClientSessionsDialog(QDialog):
         if session is None:
             return
         self._edit_session(session)
-
-    def _on_table_clicked(self, index: QModelIndex) -> None:
-        if not index.isValid() or index.column() != NOTE_COLUMN:
-            return
-        session = self._session_table_model.session_at(index.row())
-        if not session.notes:
-            return
-        dialog = SessionNoteDialog(session.notes, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._edit_session(session)
 
     def _edit_session(self, session: TreatmentSession) -> None:
         dialog = SessionDialog(

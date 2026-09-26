@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -34,6 +35,49 @@ class SessionSummary:
     next_session_date: datetime | None
 
 
+class _VisibleTextExtractor(HTMLParser):
+    """Collects human-visible text from an HTML fragment, ignoring markup
+    and any <script>/<style> content (a Qt rich-text document always
+    carries a <style> block, whose CSS text would otherwise be mistaken
+    for real content)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip_depth = 0
+        self._chunks: list[str] = []
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if tag in ("script", "style"):
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style") and self._skip_depth:
+            self._skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_depth:
+            self._chunks.append(data)
+
+    def is_blank(self) -> bool:
+        return not "".join(self._chunks).strip()
+
+
+def _normalize_html(value: str | None) -> str | None:
+    """None for missing or blank content - including a Qt rich-text
+    document (e.g. an untouched QTextEdit's toHtml()) that only contains
+    whitespace once markup and styling are stripped away - so the database
+    only ever stores None or genuinely entered content.
+    """
+    if value is None:
+        return None
+    extractor = _VisibleTextExtractor()
+    extractor.feed(value)
+    extractor.close()
+    return None if extractor.is_blank() else value
+
+
 class TreatmentSessionService:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -45,7 +89,6 @@ class TreatmentSessionService:
         treatment_type_id: int,
         date: datetime,
         duration_minutes: int,
-        notes: str | None = None,
     ) -> TreatmentSession:
         self._validate_duration(duration_minutes)
         with self._session_factory() as session:
@@ -67,7 +110,6 @@ class TreatmentSessionService:
                 treatment_type_id=treatment_type_id,
                 date=date,
                 duration_minutes=duration_minutes,
-                notes=notes,
             )
             with transaction(session, "Sitzung konnte nicht gespeichert werden."):
                 repo.add(treatment_session)
@@ -106,7 +148,6 @@ class TreatmentSessionService:
         treatment_type_id: int,
         date: datetime,
         duration_minutes: int,
-        notes: str | None = None,
     ) -> TreatmentSession:
         self._validate_duration(duration_minutes)
         with self._session_factory() as session:
@@ -129,8 +170,27 @@ class TreatmentSessionService:
             treatment_session.treatment_type_id = treatment_type_id
             treatment_session.date = date
             treatment_session.duration_minutes = duration_minutes
-            treatment_session.notes = notes
             with transaction(session, "Sitzung konnte nicht gespeichert werden."):
+                pass
+        return treatment_session
+
+    def save_report(
+        self, session_id: int, *, report: str | None, impulses: str | None
+    ) -> TreatmentSession:
+        """Saves a session's Bericht/Impulse (the report window from Auftrag
+        A2). Blank content - including an untouched Qt rich-text document
+        containing only whitespace - is normalized to None.
+        """
+        with self._session_factory() as session:
+            repo = TreatmentSessionRepository(session)
+            treatment_session = repo.get_by_id(session_id)
+            if treatment_session is None:
+                raise NotFoundError(
+                    f"Sitzung mit ID {session_id} wurde nicht gefunden."
+                )
+            treatment_session.report = _normalize_html(report)
+            treatment_session.impulses = _normalize_html(impulses)
+            with transaction(session, "Bericht konnte nicht gespeichert werden."):
                 pass
         return treatment_session
 

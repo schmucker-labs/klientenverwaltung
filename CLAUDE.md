@@ -93,7 +93,8 @@ klientenverwaltung/
 | treatment_type_id | FK → treatment_type.id | Pflicht, ON DELETE RESTRICT |
 | date | datetime | |
 | duration_minutes | int, optional | |
-| notes | text, optional | Beobachtungen, Verlauf |
+| report | text, optional | HTML, aus dem Berichtsfenster (Auftrag A2); leerer Inhalt wird als NULL gespeichert |
+| impulses | text, optional | HTML, aus dem Berichtsfenster (Auftrag A2); leerer Inhalt wird als NULL gespeichert |
 | created_at, updated_at | datetime | automatisch |
 
 Hinweis: Der Name `session` kollidiert leicht mit SQLAlchemy-Sessions. Im Code die Modellklasse

@@ -5,9 +5,7 @@ from PySide6.QtGui import QFont
 
 from klientenverwaltung.models import TreatmentSession
 
-COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Notiz")
-NOTE_COLUMN = 3
-_NOTE_ICON = "\U0001f441"  # eye symbol
+COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)")
 
 
 class SessionTableModel(QAbstractTableModel):
@@ -61,9 +59,6 @@ class SessionTableModel(QAbstractTableModel):
                 return font
             return None
 
-        if role == Qt.ItemDataRole.TextAlignmentRole and column == NOTE_COLUMN:
-            return Qt.AlignmentFlag.AlignCenter
-
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         if column == 0:
@@ -72,6 +67,4 @@ class SessionTableModel(QAbstractTableModel):
             return session.treatment_type.name
         if column == 2:
             return str(session.duration_minutes)
-        if column == NOTE_COLUMN:
-            return _NOTE_ICON if session.notes else ""
         return None
