@@ -68,7 +68,19 @@ def strip_disallowed_formatting(document: QTextDocument) -> None:
     (see _apply_heading_level()), a different QTextFormat property than
     the absolute FontPointSize/FontPixelSize cleared here, so clearing the
     latter never undoes a heading's size.
+
+    Two passes, deliberately never interleaved: the first only reads the
+    block/fragment structure and collects (start, end, cleaned_format)
+    triples; the second applies them via a plain QTextCursor. Calling
+    cursor.setCharFormat() while a QTextBlock/fragment iterator from the
+    first pass is still in use invalidates that iterator - Qt restructures
+    the block's internal fragment map on every format change - which hung
+    (observed) or crashed (reported with real, multi-run Word paste
+    content) rather than raising a catchable Python exception. Character
+    positions stay valid across the whole second pass regardless: a
+    format-only change never inserts or removes characters.
     """
+    ranges_to_clear: list[tuple[int, int, QTextCharFormat]] = []
     block = document.begin()
     while block.isValid():
         it = block.begin()
@@ -79,15 +91,17 @@ def strip_disallowed_formatting(document: QTextDocument) -> None:
                 if any(fmt.hasProperty(prop) for prop in _STRIPPED_CHAR_PROPERTIES):
                     for prop in _STRIPPED_CHAR_PROPERTIES:
                         fmt.clearProperty(prop)
-                    cursor = QTextCursor(document)
-                    cursor.setPosition(fragment.position())
-                    cursor.setPosition(
-                        fragment.position() + fragment.length(),
-                        QTextCursor.MoveMode.KeepAnchor,
+                    ranges_to_clear.append(
+                        (fragment.position(), fragment.position() + fragment.length(), fmt)
                     )
-                    cursor.setCharFormat(fmt)
             it += 1
         block = block.next()
+
+    cursor = QTextCursor(document)
+    for start, end, fmt in ranges_to_clear:
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setCharFormat(fmt)
 
 
 class _GrowingTextEdit(QTextEdit):
