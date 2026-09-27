@@ -16,6 +16,7 @@ from klientenverwaltung.ui.backup_management_dialog import BackupManagementDialo
 from klientenverwaltung.ui.client_list_widget import ClientListWidget
 from klientenverwaltung.ui.dialogs import show_about, show_error
 from klientenverwaltung.ui.icons import get_icon, load_pixmap
+from klientenverwaltung.ui.media_overview_dialog import MediaOverviewDialog
 from klientenverwaltung.ui.theme import (
     ThemeMode,
     apply_theme_mode,
@@ -45,6 +46,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self._treatment_type_service = treatment_type_service
+        self._media_service = media_service
         self._engine = engine
         self._drive_root = drive_root
         self._theme_mode = load_theme_mode()
@@ -68,6 +70,8 @@ class MainWindow(QMainWindow):
         settings_menu = self.menuBar().addMenu("Einstellungen")
         treatment_types_action = settings_menu.addAction("Behandlungsarten verwalten…")
         treatment_types_action.triggered.connect(self._open_treatment_type_dialog)
+        media_overview_action = settings_menu.addAction("Medienübersicht…")
+        media_overview_action.triggered.connect(self._open_media_overview_dialog)
 
         appearance_menu = settings_menu.addMenu("Darstellung")
         appearance_group = QActionGroup(self)
@@ -156,6 +160,10 @@ class MainWindow(QMainWindow):
         dialog = TreatmentTypeManagementDialog(
             self._treatment_type_service, parent=self
         )
+        dialog.exec()
+
+    def _open_media_overview_dialog(self) -> None:
+        dialog = MediaOverviewDialog(self._media_service, parent=self)
         dialog.exec()
 
     def _open_about_dialog(self) -> None:
