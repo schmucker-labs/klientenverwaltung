@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -31,8 +31,11 @@ from klientenverwaltung.ui.dialogs import (
     show_info,
 )
 from klientenverwaltung.ui.loading_dialog import LoadingDialog
+from klientenverwaltung.ui.media_cleanup import offer_to_delete_now_unused_media
 from klientenverwaltung.ui.media_import_worker import MediaImportWorker
 from klientenverwaltung.ui.media_table_model import COLUMN_TITLES, MediaTableModel
+from klientenverwaltung.ui.rename_media_dialog import RenameMediaDialog
+from klientenverwaltung.ui.select_existing_media_dialog import SelectExistingMediaDialog
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -106,18 +109,26 @@ class MediaDialog(QDialog):
         self._table_view.verticalHeader().setVisible(False)
         self._table_view.doubleClicked.connect(self._on_open_clicked)
 
-        self._attach_button = QPushButton("Datei anfügen …", self)
+        self._attach_button = QPushButton("Neue Datei …", self)
+        self._select_existing_button = QPushButton("Aus vorhandenen Medien …", self)
         self._open_button = QPushButton("Öffnen", self)
+        self._rename_button = QPushButton("Umbenennen", self)
         self._remove_link_button = QPushButton("Verknüpfung entfernen", self)
         self._open_button.setEnabled(False)
+        self._rename_button.setEnabled(False)
         self._remove_link_button.setEnabled(False)
         self._attach_button.clicked.connect(self._on_attach_clicked)
+        self._select_existing_button.clicked.connect(self._on_select_existing_clicked)
         self._open_button.clicked.connect(self._on_open_clicked)
+        self._rename_button.clicked.connect(self._on_rename_clicked)
         self._remove_link_button.clicked.connect(self._on_remove_link_clicked)
+        QShortcut(QKeySequence("F2"), self, activated=self._on_rename_clicked)
 
         button_row = QHBoxLayout()
         button_row.addWidget(self._attach_button)
+        button_row.addWidget(self._select_existing_button)
         button_row.addWidget(self._open_button)
+        button_row.addWidget(self._rename_button)
         button_row.addWidget(self._remove_link_button)
         button_row.addStretch()
 
@@ -168,6 +179,7 @@ class MediaDialog(QDialog):
     def _update_button_states(self) -> None:
         has_selection = self._selected_entry() is not None
         self._open_button.setEnabled(has_selection and not self._importing)
+        self._rename_button.setEnabled(has_selection and not self._importing)
         self._remove_link_button.setEnabled(has_selection and not self._importing)
 
     def _on_attach_clicked(self) -> None:
@@ -177,6 +189,22 @@ class MediaDialog(QDialog):
         if not path_str:
             return
         self._start_import(Path(path_str))
+
+    def _on_select_existing_clicked(self) -> None:
+        dialog = SelectExistingMediaDialog(self._media_service, self._session_id, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._reload_media()
+
+    def _on_rename_clicked(self) -> None:
+        entry = self._selected_entry()
+        if entry is None:
+            return
+        usage_count = self._media_service.count_sessions_for_media(entry.media_id)
+        dialog = RenameMediaDialog(
+            self._media_service, entry.media_id, entry.original_filename, usage_count, parent=self
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._reload_media()
 
     def _start_import(self, source_path: Path) -> None:
         self._pending_source_path = source_path
@@ -226,6 +254,7 @@ class MediaDialog(QDialog):
     def _set_busy(self, busy: bool) -> None:
         self._importing = busy
         self._attach_button.setEnabled(not busy)
+        self._select_existing_button.setEnabled(not busy)
         self._close_button.setEnabled(not busy)
         self._table_view.setEnabled(not busy)
         self._update_button_states()
@@ -294,4 +323,5 @@ class MediaDialog(QDialog):
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
+        offer_to_delete_now_unused_media(self._media_service, [entry.media_id], parent=self)
         self._reload_media()
