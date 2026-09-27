@@ -162,3 +162,26 @@ def ask_confirm_restore(
     box.setDefaultButton(cancel_button)
     box.exec()
     return box.clickedButton() is restore_button
+
+
+def ask_use_existing_file(
+    original_filename: str, *, parent: QWidget | None = None
+) -> bool:
+    """Shown when an imported file's content already exists in the media
+    store under a possibly different name; Ja links the existing file
+    without copying again, Nein skips attaching this file at all (the
+    duplicate is not stored a second time - Auftrag C1's dedup would
+    otherwise be pointless).
+    """
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Datei bereits vorhanden")
+    box.setText(
+        f'Diese Datei ist bereits vorhanden als "{original_filename}". '
+        "Vorhandene Datei verwenden?"
+    )
+    yes_button = box.addButton("Ja", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton("Nein", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(yes_button)
+    box.exec()
+    return box.clickedButton() is yes_button
