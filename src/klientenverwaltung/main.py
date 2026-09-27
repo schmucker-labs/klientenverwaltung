@@ -232,6 +232,7 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
     treatment_type_service = TreatmentTypeService(session_factory)
     treatment_session_service = TreatmentSessionService(session_factory)
     media_service = MediaService(session_factory, drive_root)
+    media_service.cleanup_orphaned_part_files()
 
     window = MainWindow(
         client_service,

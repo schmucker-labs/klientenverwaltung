@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import uuid
@@ -16,6 +17,8 @@ from klientenverwaltung.models import Media
 from klientenverwaltung.repositories import MediaRepository, TreatmentSessionRepository
 from klientenverwaltung.services.errors import NotFoundError, ServiceError
 from klientenverwaltung.services.transaction import transaction
+
+_logger = logging.getLogger(__name__)
 
 MEDIA_FOLDER_NAME = "medien"
 _CHUNK_SIZE = 4 * 1024 * 1024  # 4 MiB per progress tick
@@ -265,3 +268,39 @@ class MediaService:
 
     def resolve_media_path_for_entry(self, entry: SessionMediaEntry) -> Path:
         return self._media_dir / entry.stored_filename
+
+    def cleanup_orphaned_part_files(self) -> int:
+        """Removes .part files left behind by an import that never
+        finished (a hard kill, power loss, a dead battery) - by
+        definition incomplete and never recorded in the database, so
+        removing them loses nothing. Only ever touches files directly
+        inside the medien folder whose name ends in ".part"; nothing else
+        there, and nothing outside it.
+
+        Nothing in this program currently stops two instances from
+        running at once against the same data drive. If another running
+        instance is mid-import, its .part file is still open for writing,
+        and Windows refuses to delete an open file out from under it -
+        that failure is exactly the expected outcome for a file that
+        turns out not to be orphaned after all, so it is skipped silently
+        (counted, but never logged with the filename) rather than treated
+        as an error.
+        """
+        if not self._media_dir.exists():
+            return 0
+        removed = 0
+        skipped = 0
+        for path in self._media_dir.glob("*.part"):
+            try:
+                path.unlink()
+                removed += 1
+            except OSError:
+                skipped += 1
+        if skipped:
+            _logger.warning(
+                "%d liegengebliebene .part-Datei(en) konnten nicht entfernt "
+                "werden (vermutlich durch eine andere laufende Instanz in "
+                "Benutzung).",
+                skipped,
+            )
+        return removed

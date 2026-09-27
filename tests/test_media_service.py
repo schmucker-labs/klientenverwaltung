@@ -219,3 +219,57 @@ def test_cancel_during_hash_only_pass_leaves_no_file_and_no_db_row(
     assert len(list(media_dir.glob("*"))) == 1  # only the first file, no leftovers
     entries = media_service.list_media_for_session(treatment_session.id)
     assert [entry.media_id for entry in entries] == [first.media.id]
+
+
+def test_cleanup_orphaned_part_files_removes_part_files_but_keeps_others(
+    session_factory, tmp_path: Path
+) -> None:
+    """A .part file left behind by a hard kill/power loss/dead battery
+    mid-import is by definition incomplete and was never recorded in the
+    database, so removing it loses nothing. A genuine media file in the
+    same folder must be left untouched.
+    """
+    drive_root = tmp_path / "drive"
+    media_dir = drive_root / "medien"
+    media_dir.mkdir(parents=True)
+    orphaned = media_dir / "abc123.jpg.part"
+    orphaned.write_bytes(b"partial")
+    real_media = media_dir / "def456.jpg"
+    real_media.write_bytes(b"complete")
+
+    service = MediaService(session_factory, drive_root)
+    removed = service.cleanup_orphaned_part_files()
+
+    assert removed == 1
+    assert not orphaned.exists()
+    assert real_media.exists()
+
+
+def test_cleanup_orphaned_part_files_skips_a_file_that_is_currently_open(
+    session_factory, tmp_path: Path
+) -> None:
+    """Nothing in this program currently stops two instances from running
+    at once against the same data drive - if another instance is
+    mid-import, its .part file is still open for writing and must not be
+    deleted out from under it. Windows refuses to unlink an open file;
+    that failure must be swallowed, not raised, and the file must survive.
+    """
+    drive_root = tmp_path / "drive"
+    media_dir = drive_root / "medien"
+    media_dir.mkdir(parents=True)
+    in_progress = media_dir / "xyz789.mp4.part"
+    in_progress.write_bytes(b"partial")
+
+    service = MediaService(session_factory, drive_root)
+    with in_progress.open("r+b"):  # stands in for another process's open handle
+        removed = service.cleanup_orphaned_part_files()
+
+    assert removed == 0
+    assert in_progress.exists()
+
+
+def test_cleanup_orphaned_part_files_returns_zero_when_medien_folder_is_missing(
+    session_factory, tmp_path: Path
+) -> None:
+    service = MediaService(session_factory, tmp_path / "drive")
+    assert service.cleanup_orphaned_part_files() == 0
