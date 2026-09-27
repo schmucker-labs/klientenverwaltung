@@ -8,6 +8,7 @@ from sqlalchemy import Engine
 from klientenverwaltung import AUTHOR, __version__, backup, config
 from klientenverwaltung.services import (
     ClientService,
+    MediaService,
     TreatmentSessionService,
     TreatmentTypeService,
 )
@@ -37,6 +38,7 @@ class MainWindow(QMainWindow):
         client_service: ClientService,
         treatment_type_service: TreatmentTypeService,
         treatment_session_service: TreatmentSessionService,
+        media_service: MediaService,
         *,
         engine: Engine,
         drive_root: Path,
@@ -51,7 +53,10 @@ class MainWindow(QMainWindow):
         self.resize(1000, 700)
         self.setCentralWidget(
             ClientListWidget(
-                client_service, treatment_type_service, treatment_session_service
+                client_service,
+                treatment_type_service,
+                treatment_session_service,
+                media_service,
             )
         )
         self._build_menu()

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from klientenverwaltung.services import (
     ClientListEntry,
     ClientService,
+    MediaService,
     ServiceError,
     TreatmentSessionService,
     TreatmentTypeService,
@@ -38,12 +39,14 @@ class ClientListWidget(QWidget):
         client_service: ClientService,
         treatment_type_service: TreatmentTypeService,
         treatment_session_service: TreatmentSessionService,
+        media_service: MediaService,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._client_service = client_service
         self._treatment_type_service = treatment_type_service
         self._treatment_session_service = treatment_session_service
+        self._media_service = media_service
 
         self._search_edit = QLineEdit(self)
         self._search_edit.setPlaceholderText("Suche nach Name oder Ort …")
@@ -165,6 +168,7 @@ class ClientListWidget(QWidget):
             self._client_service,
             self._treatment_type_service,
             self._treatment_session_service,
+            self._media_service,
             client_id,
             parent=self,
         )
@@ -185,6 +189,7 @@ class ClientListWidget(QWidget):
             self._client_service,
             self._treatment_type_service,
             self._treatment_session_service,
+            self._media_service,
             client_id,
             parent=self,
         )

@@ -20,6 +20,7 @@ from sqlalchemy.orm import sessionmaker
 from klientenverwaltung import backup, config, storage
 from klientenverwaltung.services import (
     ClientService,
+    MediaService,
     TreatmentSessionService,
     TreatmentTypeService,
 )
@@ -230,11 +231,13 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
     client_service = ClientService(session_factory)
     treatment_type_service = TreatmentTypeService(session_factory)
     treatment_session_service = TreatmentSessionService(session_factory)
+    media_service = MediaService(session_factory, drive_root)
 
     window = MainWindow(
         client_service,
         treatment_type_service,
         treatment_session_service,
+        media_service,
         engine=engine,
         drive_root=drive_root,
     )

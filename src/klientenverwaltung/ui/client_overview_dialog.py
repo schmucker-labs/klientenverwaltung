@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from klientenverwaltung.models import Client
 from klientenverwaltung.services import (
     ClientService,
+    MediaService,
     TreatmentSessionService,
     TreatmentTypeService,
 )
@@ -40,6 +41,7 @@ class ClientOverviewDialog(QDialog):
         client_service: ClientService,
         treatment_type_service: TreatmentTypeService,
         treatment_session_service: TreatmentSessionService,
+        media_service: MediaService,
         client_id: int,
         parent: QWidget | None = None,
     ) -> None:
@@ -47,6 +49,7 @@ class ClientOverviewDialog(QDialog):
         self._client_service = client_service
         self._treatment_type_service = treatment_type_service
         self._treatment_session_service = treatment_session_service
+        self._media_service = media_service
         self._client_id = client_id
 
         self.resize(650, 700)
@@ -267,6 +270,7 @@ class ClientOverviewDialog(QDialog):
         dialog = ClientSessionsDialog(
             self._treatment_type_service,
             self._treatment_session_service,
+            self._media_service,
             self._client_id,
             client_name,
             parent=self,
