@@ -7,7 +7,6 @@ from PySide6.QtGui import (
     QKeySequence,
     QPainter,
     QPixmap,
-    QResizeEvent,
     QShortcut,
     QTextCharFormat,
     QTextCursor,
@@ -23,7 +22,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -32,11 +30,11 @@ from PySide6.QtWidgets import (
 from klientenverwaltung.models import TreatmentSession
 from klientenverwaltung.services import ServiceError, TreatmentSessionService
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
+from klientenverwaltung.ui.growing_text_edit import GrowingTextEdit
 from klientenverwaltung.ui.theme import ColorPalette, get_palette, load_theme_mode
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _GEOMETRY_SETTINGS_KEY = "report/geometry"
-_MIN_VISIBLE_LINES = 8
 _TOOLBAR_ICON_SIZE = 20
 _STYLE_NAMES = ("Normal", "Überschrift 1", "Überschrift 2", "Überschrift 3")
 _MAX_HEADING_LEVEL = len(_STYLE_NAMES) - 1
@@ -104,33 +102,16 @@ def strip_disallowed_formatting(document: QTextDocument) -> None:
         cursor.setCharFormat(fmt)
 
 
-class _GrowingTextEdit(QTextEdit):
-    """A QTextEdit with no scrollbar of its own: it grows vertically to
-    fit its content - never below _MIN_VISIBLE_LINES worth of height -
-    so only the enclosing QScrollArea ever scrolls.
-
-    Only ever gains formatting through the toolbar (bold/italic/underline/
-    heading) - insertFromMimeData() strips everything else straight away,
-    same as the pre-save cleanup in ReportDialog._save().
+class _GrowingTextEdit(GrowingTextEdit):
+    """Adds editing-only behavior on top of GrowingTextEdit: a focus
+    signal for toolbar active-editor tracking, and paste-format
+    stripping. Only ever gains formatting through the toolbar
+    (bold/italic/underline/heading) - insertFromMimeData() strips
+    everything else straight away, same as the pre-save cleanup in
+    ReportDialog._save().
     """
 
     focused = Signal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.document().documentLayout().documentSizeChanged.connect(
-            self._update_height
-        )
-        self._update_height()
-
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        # A width change re-wraps the text, which changes its height too -
-        # documentSizeChanged alone does not reliably fire for that.
-        self._update_height()
 
     def focusInEvent(self, event: QFocusEvent) -> None:
         super().focusInEvent(event)
@@ -139,19 +120,6 @@ class _GrowingTextEdit(QTextEdit):
     def insertFromMimeData(self, source: QMimeData) -> None:
         super().insertFromMimeData(source)
         strip_disallowed_formatting(self.document())
-
-    def _update_height(self, *_args: object) -> None:
-        margins = self.contentsMargins()
-        frame = 2 * self.frameWidth()
-        extra = (
-            2 * self.document().documentMargin()
-            + margins.top()
-            + margins.bottom()
-            + frame
-        )
-        min_height = self.fontMetrics().lineSpacing() * _MIN_VISIBLE_LINES + extra
-        content_height = self.document().size().height() + extra
-        self.setFixedHeight(int(max(min_height, content_height)))
 
 
 class ReportDialog(QDialog):
