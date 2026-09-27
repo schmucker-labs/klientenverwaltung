@@ -100,6 +100,24 @@ klientenverwaltung/
 Hinweis: Der Name `session` kollidiert leicht mit SQLAlchemy-Sessions. Im Code die Modellklasse
 z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 
+### media
+| Spalte | Typ | Hinweis |
+|---|---|---|
+| id | int PK | |
+| stored_filename | str, eindeutig | UUID + Originalendung, relativ zum Medienordner |
+| original_filename | str | ursprünglicher Dateiname, nur zur Anzeige |
+| media_kind | str | "image"/"video"/"audio"/"other", aus der Endung bestimmt |
+| size_bytes | int | |
+| sha256 | str | für die Duplikat-Erkennung beim Import |
+| created_at | datetime | automatisch |
+
+### session_media
+| Spalte | Typ | Hinweis |
+|---|---|---|
+| session_id | FK → session.id | Pflicht, ON DELETE CASCADE, Teil des Primärschlüssels |
+| media_id | FK → media.id | Pflicht, ON DELETE RESTRICT, Teil des Primärschlüssels |
+| added_at | datetime | automatisch, wann diese Sitzung mit der Datei verknüpft wurde |
+
 ### Regeln
 - Klient löschen löscht alle zugehörigen Sitzungen (Gesundheitsdaten dürfen nicht verwaist
   zurückbleiben). Endgültiges Löschen immer mit Sicherheitsabfrage; Alltag = archivieren.
@@ -109,6 +127,13 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 - "Letzte Sitzung" ist immer die jüngste Sitzung mit Datum in der VERGANGENHEIT,
   "Nächster Termin"/"Nächste Sitzung" die nächste in der Zukunft. Beide Werte kommen
   aus derselben Repository-Abfrage und werden nirgends erneut berechnet.
+- Mediendateien liegen im Ordner "medien" auf der Datenplatte, benannt mit einer
+  UUID statt dem Originalnamen. Eine Datei kann mehreren Sitzungen zugeordnet sein
+  (Duplikate werden über den Dateiinhalt/SHA-256 erkannt, nie erneut kopiert).
+  Sitzung/Klient löschen entfernt nur die Verknüpfung (`session_media`), nie die
+  Datei oder den `media`-Eintrag (Aufräumen verwaister Dateien ist Auftrag C2).
+  Das Original bleibt immer unverändert, wo der Anwender es ausgewählt hat -
+  das Programm löscht es nie.
 
 ## Speicherung, Verschlüsselung, Sicherheit
 
@@ -125,6 +150,10 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 - Menüpunkt "Passwort ändern" (Rekey).
 - Bei jeder Verbindung: `PRAGMA foreign_keys = ON` und `PRAGMA synchronous = FULL`.
 - Das Passwort nie speichern oder loggen.
+- Mediendateien werden nur kopiert, nie verschoben oder gelöscht, und liegen
+  unverschlüsselt im Ordner "medien" auf der Datenplatte - ihr Schutz hängt
+  bis auf Weiteres von der Verschlüsselung der ganzen Datenplatte ab (siehe
+  TODO.md, "Vor der Übergabe").
 
 ## Build & Auslieferung
 

@@ -20,6 +20,10 @@ und im README verlinken:
 - Testdaten vollständig entfernen, bevor echte Klientendaten eingetragen werden
 - Datenplatte verschlüsseln (BitLocker To Go, falls Windows-Edition das erlaubt)
 - Anrede als editierbare QComboBox mit Autovervollständigung, Vorschläge aus den bereits vergebenen Werten.
+- Verschlüsselung der Mediendateien klären (Windows-Edition prüfen: Pro -> BitLocker
+  To Go; Home -> Upgrade/VeraCrypt/eigene Verschlüsselung). Bevor echte Aufnahmen
+  gespeichert werden!
+- Heiler informieren: Mediendateien werden NICHT gesichert.
 
 ## Fragen an den Anwender
 
