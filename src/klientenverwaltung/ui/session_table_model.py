@@ -5,8 +5,9 @@ from PySide6.QtGui import QFont
 
 from klientenverwaltung.models import TreatmentSession
 
-COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Bericht")
-REPORT_COLUMN = 3
+COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Medien", "Bericht")
+MEDIA_COLUMN = 3
+REPORT_COLUMN = 4
 _REPORT_CHECK = "✓"  # check mark
 
 
@@ -14,10 +15,14 @@ class SessionTableModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
         self._sessions: list[TreatmentSession] = []
+        self._media_counts: dict[int, int] = {}
 
-    def set_sessions(self, sessions: list[TreatmentSession]) -> None:
+    def set_sessions(
+        self, sessions: list[TreatmentSession], media_counts: dict[int, int]
+    ) -> None:
         self.beginResetModel()
         self._sessions = sessions
+        self._media_counts = media_counts
         self.endResetModel()
 
     def session_at(self, row: int) -> TreatmentSession:
@@ -63,7 +68,10 @@ class SessionTableModel(QAbstractTableModel):
                 return font
             return None
 
-        if role == Qt.ItemDataRole.TextAlignmentRole and column == REPORT_COLUMN:
+        if role == Qt.ItemDataRole.TextAlignmentRole and column in (
+            MEDIA_COLUMN,
+            REPORT_COLUMN,
+        ):
             return Qt.AlignmentFlag.AlignCenter
 
         if role != Qt.ItemDataRole.DisplayRole:
@@ -74,6 +82,9 @@ class SessionTableModel(QAbstractTableModel):
             return session.treatment_type.name
         if column == 2:
             return str(session.duration_minutes)
+        if column == MEDIA_COLUMN:
+            count = self._media_counts.get(session.id, 0)
+            return str(count) if count else ""
         if column == REPORT_COLUMN:
             return _REPORT_CHECK if (session.report or session.impulses) else ""
         return None

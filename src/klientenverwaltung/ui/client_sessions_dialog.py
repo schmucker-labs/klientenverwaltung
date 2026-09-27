@@ -10,15 +10,18 @@ from PySide6.QtWidgets import (
 
 from klientenverwaltung.models import TreatmentSession
 from klientenverwaltung.services import (
+    MediaService,
     ServiceError,
     TreatmentSessionService,
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
+from klientenverwaltung.ui.media_dialog import MediaDialog
 from klientenverwaltung.ui.report_dialog import ReportDialog
 from klientenverwaltung.ui.session_dialog import SessionDialog
 from klientenverwaltung.ui.session_table_model import (
     COLUMN_TITLES,
+    MEDIA_COLUMN,
     REPORT_COLUMN,
     SessionTableModel,
 )
@@ -43,6 +46,7 @@ class ClientSessionsDialog(QDialog):
         self,
         treatment_type_service: TreatmentTypeService,
         treatment_session_service: TreatmentSessionService,
+        media_service: MediaService,
         client_id: int,
         client_name: str,
         parent: QWidget | None = None,
@@ -50,6 +54,7 @@ class ClientSessionsDialog(QDialog):
         super().__init__(parent)
         self._treatment_type_service = treatment_type_service
         self._treatment_session_service = treatment_session_service
+        self._media_service = media_service
         self._client_id = client_id
         self._client_name = client_name
 
@@ -66,9 +71,10 @@ class ClientSessionsDialog(QDialog):
         # only has the (much shorter) column headers to measure against on
         # an empty model, and would size the Datum column too narrow to
         # show a real date once sessions are loaded.
-        self._session_table_model.set_sessions(
-            self._treatment_session_service.list_sessions_for_client(self._client_id)
+        sessions = self._treatment_session_service.list_sessions_for_client(
+            self._client_id
         )
+        self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
         self._session_table_view = QTableView(self)
         self._session_table_view.setModel(self._session_table_model)
         self._session_table_view.setSelectionBehavior(
@@ -87,6 +93,7 @@ class ClientSessionsDialog(QDialog):
         )
         if not restored:
             self._session_table_view.resizeColumnsToContents()
+            self._session_table_view.setColumnWidth(MEDIA_COLUMN, 60)
             self._session_table_view.setColumnWidth(REPORT_COLUMN, 60)
         # Behandlungsart (treatment type name) is the one open-ended,
         # variable-length column, so it gets the remaining space rather than
@@ -100,13 +107,16 @@ class ClientSessionsDialog(QDialog):
             self._update_button_states
         )
 
+        self._media_button = QPushButton("Medien", self)
         self._report_button = QPushButton("Bericht", self)
         self._new_session_button = QPushButton("Neue Sitzung", self)
         self._edit_session_button = QPushButton("Bearbeiten", self)
         self._delete_session_button = QPushButton("Löschen", self)
+        self._media_button.setEnabled(False)
         self._report_button.setEnabled(False)
         self._edit_session_button.setEnabled(False)
         self._delete_session_button.setEnabled(False)
+        self._media_button.clicked.connect(self._on_media_clicked)
         self._report_button.clicked.connect(self._on_report_clicked)
         self._new_session_button.clicked.connect(self._on_new_session_clicked)
         self._edit_session_button.clicked.connect(self._on_edit_session_clicked)
@@ -114,6 +124,7 @@ class ClientSessionsDialog(QDialog):
 
         button_row = QHBoxLayout()
         button_row.addStretch()
+        button_row.addWidget(self._media_button)
         button_row.addWidget(self._report_button)
         button_row.addWidget(self._new_session_button)
         button_row.addWidget(self._edit_session_button)
@@ -141,11 +152,16 @@ class ClientSessionsDialog(QDialog):
         save_geometry(self, _GEOMETRY_SETTINGS_KEY)
         super().done(result)
 
+    def _media_counts_for(self, sessions: list[TreatmentSession]) -> dict[int, int]:
+        return self._media_service.count_media_for_sessions(
+            [session.id for session in sessions]
+        )
+
     def _reload_sessions(self) -> None:
         sessions = self._treatment_session_service.list_sessions_for_client(
             self._client_id
         )
-        self._session_table_model.set_sessions(sessions)
+        self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
         self._update_button_states()
 
     def _selected_session(self) -> TreatmentSession | None:
@@ -156,9 +172,20 @@ class ClientSessionsDialog(QDialog):
 
     def _update_button_states(self) -> None:
         has_selection = self._selected_session() is not None
+        self._media_button.setEnabled(has_selection)
         self._report_button.setEnabled(has_selection)
         self._edit_session_button.setEnabled(has_selection)
         self._delete_session_button.setEnabled(has_selection)
+
+    def _on_media_clicked(self) -> None:
+        session = self._selected_session()
+        if session is None:
+            return
+        dialog = MediaDialog(
+            self._media_service, session, self._client_name, parent=self
+        )
+        dialog.exec()
+        self._reload_sessions()
 
     def _on_report_clicked(self) -> None:
         session = self._selected_session()
