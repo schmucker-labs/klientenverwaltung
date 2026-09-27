@@ -414,3 +414,160 @@ def test_rename_media_rejects_a_forbidden_character_anywhere_in_the_name(
 
     with pytest.raises(ValidationError):
         media_service.rename_media(outcome.media.id, "vor:nach.jpg")
+
+
+def test_find_now_unused_reports_media_with_no_remaining_links(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.remove_link(treatment_session.id, outcome.media.id)
+
+    unused = media_service.find_now_unused([outcome.media.id])
+
+    assert [m.id for m in unused] == [outcome.media.id]
+
+
+def test_find_now_unused_excludes_media_still_linked_elsewhere(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.link_existing_media(other_session.id, [outcome.media.id])
+
+    media_service.remove_link(treatment_session.id, outcome.media.id)
+    unused = media_service.find_now_unused([outcome.media.id])
+
+    assert unused == []  # still linked to other_session
+
+
+def test_deleting_a_session_leaves_its_only_medium_findable_as_unused(
+    media_service: MediaService, treatment_session_service, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+
+    treatment_session_service.delete_session(treatment_session.id)
+
+    assert [m.id for m in media_service.find_now_unused([outcome.media.id])] == [
+        outcome.media.id
+    ]
+
+
+def test_delete_unused_media_removes_file_and_db_row(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.remove_link(treatment_session.id, outcome.media.id)
+    stored_path = media_service.resolve_media_path(outcome.media)
+
+    failures = media_service.delete_unused_media([outcome.media.id])
+
+    assert failures == []
+    assert not stored_path.exists()
+    assert media_service.list_all_media() == []
+
+
+def test_delete_unused_media_refuses_a_still_used_medium(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    stored_path = media_service.resolve_media_path(outcome.media)
+
+    failures = media_service.delete_unused_media([outcome.media.id])
+
+    assert failures == []  # not reported as a failure - it's simply not deleted
+    assert stored_path.exists()
+    assert len(media_service.list_all_media()) == 1
+
+
+def test_delete_unused_media_reports_a_file_it_cannot_remove(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.remove_link(treatment_session.id, outcome.media.id)
+    stored_path = media_service.resolve_media_path(outcome.media)
+
+    with stored_path.open("r+b"):  # stands in for "open in another program"
+        failures = media_service.delete_unused_media([outcome.media.id])
+
+    assert [m.id for m in failures] == [outcome.media.id]
+    assert stored_path.exists()
+    assert len(media_service.list_all_media()) == 1  # DB row kept, still 0x
+
+
+def test_delete_unknown_file_removes_an_untracked_file(
+    media_service: MediaService, tmp_path: Path
+) -> None:
+    media_dir = media_service.resolve_media_path_for_stored_filename("x").parent
+    media_dir.mkdir(parents=True)
+    unknown = media_dir / "12345678deadbeef.png"
+    unknown.write_bytes(b"?")
+
+    assert media_service.delete_unknown_file("12345678deadbeef.png") is True
+    assert not unknown.exists()
+
+
+def test_list_media_ids_for_client_deduplicates_a_file_shared_across_own_sessions(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    """The same file attached to two of one client's own sessions must be
+    offered for deletion exactly once after that client is deleted, not
+    once per session it was attached to.
+    """
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    source = _make_source_file(tmp_path, "shared.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.link_existing_media(other_session.id, [outcome.media.id])
+
+    ids = media_service.list_media_ids_for_client(client.id)
+
+    assert ids == [outcome.media.id]  # not duplicated
+
+
+def test_list_media_ids_for_client_covers_all_of_that_clients_sessions(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    source_a = _make_source_file(tmp_path, "a.jpg", b"a" * 5)
+    source_b = _make_source_file(tmp_path, "b.jpg", b"b" * 5)
+    outcome_a = media_service.import_file(treatment_session.id, source_a)
+    outcome_b = media_service.import_file(other_session.id, source_b)
+
+    ids = media_service.list_media_ids_for_client(client.id)
+
+    assert set(ids) == {outcome_a.media.id, outcome_b.media.id}

@@ -329,6 +329,57 @@ class MediaService:
                 pass
         return media
 
+    def find_now_unused(self, media_ids: Sequence[int]) -> list[Media]:
+        if not media_ids:
+            return []
+        with self._session_factory() as session:
+            repo = MediaRepository(session)
+            usage = repo.usage_counts_for_media(media_ids)
+            unused: list[Media] = []
+            for media_id in media_ids:
+                if usage.get(media_id, 0) > 0:
+                    continue
+                media = repo.get_by_id(media_id)
+                if media is not None:
+                    unused.append(media)
+        return unused
+
+    def delete_unused_media(self, media_ids: Sequence[int]) -> list[Media]:
+        if not media_ids:
+            return []
+        failures: list[Media] = []
+        with self._session_factory() as session:
+            repo = MediaRepository(session)
+            usage = repo.usage_counts_for_media(media_ids)
+            for media_id in media_ids:
+                if usage.get(media_id, 0) > 0:
+                    continue
+                media = repo.get_by_id(media_id)
+                if media is None:
+                    continue
+                path = self._media_dir / media.stored_filename
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    failures.append(media)
+                    continue
+                repo.delete(media)
+            with transaction(session, "Mediendateien konnten nicht gelöscht werden."):
+                pass
+        return failures
+
+    def delete_unknown_file(self, stored_filename: str) -> bool:
+        path = self._media_dir / stored_filename
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            return False
+        return True
+
+    def list_media_ids_for_client(self, client_id: int) -> list[int]:
+        with self._session_factory() as session:
+            return MediaRepository(session).list_media_ids_for_client(client_id)
+
     def list_all_media(self) -> list[MediaOverviewEntry]:
         with self._session_factory() as session:
             repo = MediaRepository(session)
