@@ -128,12 +128,14 @@ class TreatmentSessionService:
         with self._session_factory() as session:
             return TreatmentSessionRepository(session).list_for_client(client_id)
 
-    def count_sessions_with_content(self, client_id: int) -> int:
+    def list_sessions_with_content(self, client_id: int) -> list[TreatmentSession]:
         """Sessions with a Bericht or Impulse entered (Auftrag A2's report
-        window) - drives the "Berichte (n)" button on the Klientenübersicht
-        (Auftrag B1)."""
-        sessions = self.list_sessions_for_client(client_id)
-        return sum(1 for session in sessions if session.report or session.impulses)
+        window), newest first - feeds both the Berichtsverlauf dialog and
+        the "Berichte (n)" count on the Klientenübersicht (Auftrag B2)."""
+        with self._session_factory() as session:
+            return TreatmentSessionRepository(session).list_with_content_for_client(
+                client_id
+            )
 
     def get_session_summary(
         self, client_id: int, *, now: datetime | None = None

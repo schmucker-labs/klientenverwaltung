@@ -358,60 +358,99 @@ def test_save_report_blank_content_stored_as_none(
     assert updated.impulses is None
 
 
-def test_count_sessions_with_content_counts_only_sessions_with_report_or_impulses(
+def test_list_sessions_with_content_orders_newest_first_and_excludes_contentless(
     treatment_session_service: TreatmentSessionService,
     client: Client,
     treatment_type: TreatmentType,
 ) -> None:
-    no_content = treatment_session_service.create_session(
+    older = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 1, 10, 9, 0),
         duration_minutes=60,
     )
-    report_only = treatment_session_service.create_session(
+    newer = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
-        date=datetime(2026, 1, 11, 9, 0),
+        date=datetime(2026, 1, 20, 9, 0),
         duration_minutes=60,
     )
-    impulses_only = treatment_session_service.create_session(
+    without_content = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
-        date=datetime(2026, 1, 12, 9, 0),
+        date=datetime(2026, 1, 25, 9, 0),
         duration_minutes=60,
     )
-    both = treatment_session_service.create_session(
-        client_id=client.id,
-        treatment_type_id=treatment_type.id,
-        date=datetime(2026, 1, 13, 9, 0),
-        duration_minutes=60,
-    )
+    treatment_session_service.save_report(older.id, report="<p>Alt</p>", impulses=None)
+    treatment_session_service.save_report(newer.id, report="<p>Neu</p>", impulses=None)
     treatment_session_service.save_report(
-        no_content.id, report=None, impulses=None
-    )
-    treatment_session_service.save_report(
-        report_only.id, report="<p>Bericht</p>", impulses=None
-    )
-    treatment_session_service.save_report(
-        impulses_only.id, report=None, impulses="<p>Impuls</p>"
-    )
-    treatment_session_service.save_report(
-        both.id, report="<p>Bericht</p>", impulses="<p>Impuls</p>"
+        without_content.id, report=None, impulses=None
     )
 
-    assert (
-        treatment_session_service.count_sessions_with_content(client.id) == 3
-    )
+    result = treatment_session_service.list_sessions_with_content(client.id)
+
+    assert [s.id for s in result] == [newer.id, older.id]
 
 
-def test_count_sessions_with_content_is_zero_for_client_without_sessions(
-    treatment_session_service: TreatmentSessionService, client: Client
+def test_list_sessions_with_content_breaks_same_date_ties_deterministically(
+    treatment_session_service: TreatmentSessionService,
+    session_factory: sessionmaker[Session],
+    client: Client,
+    treatment_type: TreatmentType,
 ) -> None:
-    assert treatment_session_service.count_sessions_with_content(client.id) == 0
+    """Two sessions at the exact same date must still come back in a fixed,
+    repeatable order (newest-inserted first) rather than whatever order
+    SQLite happens to return ties in - Berichtsverlauf must not visibly
+    reshuffle same-timestamp sessions between opens. create_session() itself
+    rejects overlapping sessions (see SessionOverlapError), so an exact tie
+    can never arise through the service's own API - this writes both rows
+    directly to reach the tie in the first place."""
+    same_date = datetime(2026, 1, 10, 9, 0)
+    with session_factory() as db_session:
+        first = TreatmentSession(
+            client_id=client.id,
+            treatment_type_id=treatment_type.id,
+            date=same_date,
+            duration_minutes=60,
+            report="<p>Erste</p>",
+        )
+        second = TreatmentSession(
+            client_id=client.id,
+            treatment_type_id=treatment_type.id,
+            date=same_date,
+            duration_minutes=60,
+            report="<p>Zweite</p>",
+        )
+        db_session.add_all([first, second])
+        db_session.commit()
+        first_id, second_id = first.id, second.id
+
+    result = treatment_session_service.list_sessions_with_content(client.id)
+
+    assert [s.id for s in result] == [second_id, first_id]
 
 
-def test_count_sessions_with_content_does_not_count_empty_string_content(
+def test_list_sessions_with_content_includes_session_with_only_impulses(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 10, 9, 0),
+        duration_minutes=60,
+    )
+    treatment_session_service.save_report(
+        session.id, report=None, impulses="<p>Impuls</p>"
+    )
+
+    result = treatment_session_service.list_sessions_with_content(client.id)
+
+    assert [s.id for s in result] == [session.id]
+
+
+def test_list_sessions_with_content_excludes_empty_string_content(
     treatment_session_service: TreatmentSessionService,
     session_factory: sessionmaker[Session],
     client: Client,
@@ -419,18 +458,18 @@ def test_count_sessions_with_content_does_not_count_empty_string_content(
 ) -> None:
     """save_report() normalizes blank content to None before it ever reaches
     the database, so this bypasses it to write empty strings directly -
-    proving count_sessions_with_content() itself treats "" as no content
-    (via truthiness), not just that save_report() never lets "" through."""
-    created = treatment_session_service.create_session(
+    proving the query itself treats "" as no content, not just that
+    save_report() never lets one through."""
+    session = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
         date=datetime(2026, 1, 14, 9, 0),
         duration_minutes=60,
     )
     with session_factory() as db_session:
-        treatment_session = db_session.get(TreatmentSession, created.id)
+        treatment_session = db_session.get(TreatmentSession, session.id)
         treatment_session.report = ""
         treatment_session.impulses = ""
         db_session.commit()
 
-    assert treatment_session_service.count_sessions_with_content(client.id) == 0
+    assert treatment_session_service.list_sessions_with_content(client.id) == []

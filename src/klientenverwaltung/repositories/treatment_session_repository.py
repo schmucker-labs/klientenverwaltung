@@ -3,10 +3,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import ColumnElement, and_, func, or_, select
+from sqlalchemy.orm import InstrumentedAttribute, Session, joinedload
 
 from klientenverwaltung.models import TreatmentSession
+
+
+def _has_content(column: InstrumentedAttribute[str | None]) -> ColumnElement[bool]:
+    return and_(column.is_not(None), column != "")
 
 
 class TreatmentSessionRepository:
@@ -38,6 +42,32 @@ class TreatmentSessionRepository:
             .where(TreatmentSession.client_id == client_id)
             .options(joinedload(TreatmentSession.treatment_type))
             .order_by(TreatmentSession.date.desc())
+        )
+        return list(self._session.scalars(stmt))
+
+    def list_with_content_for_client(self, client_id: int) -> list[TreatmentSession]:
+        """Sessions for a client with a Bericht or Impulse entered, newest
+        first - Auftrag B2's Berichtsverlauf and the "Berichte (n)" count
+        on the Klientenübersicht both read this one query, so they can
+        never disagree about what counts as "has content". Excludes empty
+        strings as well as NULL, even though save_report() never lets a
+        blank Bericht/Impulse reach the database as anything but NULL - a
+        second, independent guard at the query that produces the count/list.
+
+        Eager-loads treatment_type so callers can read session.treatment_type.name
+        after this repository's session/transaction has ended.
+        """
+        stmt = (
+            select(TreatmentSession)
+            .where(
+                TreatmentSession.client_id == client_id,
+                or_(
+                    _has_content(TreatmentSession.report),
+                    _has_content(TreatmentSession.impulses),
+                ),
+            )
+            .options(joinedload(TreatmentSession.treatment_type))
+            .order_by(TreatmentSession.date.desc(), TreatmentSession.id.desc())
         )
         return list(self._session.scalars(stmt))
 

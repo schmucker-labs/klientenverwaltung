@@ -97,13 +97,11 @@ class ClientOverviewDialog(QDialog):
         sessions = self._treatment_session_service.list_sessions_for_client(client.id)
         self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
 
-        report_count = self._treatment_session_service.count_sessions_with_content(
-            client.id
+        report_count = len(
+            self._treatment_session_service.list_sessions_with_content(client.id)
         )
         self._report_button.setText(f"Berichte ({report_count})")
-        # Actually opening something here is Auftrag B2 - until then this
-        # stays disabled regardless of the count.
-        self._report_button.setEnabled(False)
+        self._report_button.setEnabled(report_count > 0)
         self._report_button.setToolTip(
             "Noch kein Bericht vorhanden" if report_count == 0 else ""
         )
