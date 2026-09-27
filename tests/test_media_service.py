@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from klientenverwaltung.models import Client, TreatmentSession, TreatmentType
-from klientenverwaltung.services import MediaService, NotFoundError
+from klientenverwaltung.services import MediaService, NotFoundError, ValidationError
 from klientenverwaltung.services.media_service import ImportOutcome, MediaUsageEntry
 
 
@@ -380,3 +380,37 @@ def test_count_sessions_for_media_reflects_number_of_links(
     )
     media_service.link_existing_media(other_session.id, [outcome.media.id])
     assert media_service.count_sessions_for_media(outcome.media.id) == 2
+
+
+def test_rename_media_updates_original_filename_only(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    stored_path = media_service.resolve_media_path(outcome.media)
+
+    media = media_service.rename_media(outcome.media.id, "Urlaubsfoto.jpg")
+
+    assert media.original_filename == "Urlaubsfoto.jpg"
+    assert media.stored_filename == outcome.media.stored_filename
+    assert stored_path.exists()  # the file on disk never moved
+
+
+def test_rename_media_rejects_an_empty_name(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+
+    with pytest.raises(ValidationError):
+        media_service.rename_media(outcome.media.id, "   .jpg")
+
+
+def test_rename_media_rejects_a_forbidden_character_anywhere_in_the_name(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+
+    with pytest.raises(ValidationError):
+        media_service.rename_media(outcome.media.id, "vor:nach.jpg")

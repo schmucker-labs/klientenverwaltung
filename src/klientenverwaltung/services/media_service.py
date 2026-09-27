@@ -15,13 +15,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from klientenverwaltung.models import Media
 from klientenverwaltung.repositories import MediaRepository, TreatmentSessionRepository
-from klientenverwaltung.services.errors import NotFoundError, ServiceError
+from klientenverwaltung.services.errors import (
+    NotFoundError,
+    ServiceError,
+    ValidationError,
+)
 from klientenverwaltung.services.transaction import transaction
 
 _logger = logging.getLogger(__name__)
 
 MEDIA_FOLDER_NAME = "medien"
 _CHUNK_SIZE = 4 * 1024 * 1024  # 4 MiB per progress tick
+_FORBIDDEN_FILENAME_CHARS = frozenset('\\/:*?"<>|')
 
 MediaKind = Literal["image", "video", "audio", "other"]
 
@@ -299,6 +304,30 @@ class MediaService:
 
     def resolve_media_path_for_stored_filename(self, stored_filename: str) -> Path:
         return self._media_dir / stored_filename
+
+    def rename_media(self, media_id: int, new_original_filename: str) -> Media:
+        new_name = new_original_filename.strip()
+        # The visible part is everything before the last dot - a name that
+        # is only whitespace plus an extension (e.g. "   .jpg") must still
+        # count as empty. Checked via the last "." rather than
+        # Path(...).stem/.suffix: pathlib treats a name that *starts* with
+        # a dot as a dotfile with no suffix at all (Path(".jpg").stem ==
+        # ".jpg"), which would let "   .jpg" straight through.
+        visible_part = new_name[: new_name.rfind(".")] if "." in new_name else new_name
+        if not visible_part.strip():
+            raise ValidationError("Der Name darf nicht leer sein.")
+        if any(char in _FORBIDDEN_FILENAME_CHARS for char in new_name):
+            raise ValidationError(
+                'Der Name darf keines dieser Zeichen enthalten: \\ / : * ? " < > |'
+            )
+        with self._session_factory() as session:
+            media = MediaRepository(session).get_by_id(media_id)
+            if media is None:
+                raise NotFoundError(f"Datei mit ID {media_id} wurde nicht gefunden.")
+            media.original_filename = new_name
+            with transaction(session, "Datei konnte nicht umbenannt werden."):
+                pass
+        return media
 
     def list_all_media(self) -> list[MediaOverviewEntry]:
         with self._session_factory() as session:
