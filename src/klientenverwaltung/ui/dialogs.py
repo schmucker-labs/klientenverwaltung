@@ -185,3 +185,29 @@ def ask_use_existing_file(
     box.setDefaultButton(yes_button)
     box.exec()
     return box.clickedButton() is yes_button
+
+
+def ask_delete_now_unused_media(
+    names: list[str], *, parent: QWidget | None = None
+) -> bool:
+    """Shown after an action (removing a link, deleting a session/client)
+    that may have left one or more media files used by no session at all
+    - "Löschen" removes the file(s) and their database rows right now,
+    "Behalten" (the safer default) leaves them in place; either way they
+    remain visible in the Medienübersicht (Auftrag C2), at 0x if kept.
+    """
+    count_phrase = (
+        "Eine Mediendatei wird" if len(names) == 1 else f"{len(names)} Mediendateien werden"
+    )
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Nicht mehr verwendete Mediendateien")
+    box.setText(
+        f"{count_phrase} nicht mehr verwendet: {', '.join(names)}. "
+        "Jetzt endgültig löschen?"
+    )
+    delete_button = box.addButton("Löschen", QMessageBox.ButtonRole.DestructiveRole)
+    keep_button = box.addButton("Behalten", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(keep_button)
+    box.exec()
+    return box.clickedButton() is delete_button
