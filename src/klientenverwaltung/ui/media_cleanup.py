@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from PySide6.QtWidgets import QWidget
 
-from klientenverwaltung.services import MediaService
+from klientenverwaltung.services import MediaService, ServiceError
 from klientenverwaltung.ui.dialogs import ask_delete_now_unused_media, show_error
 
 
@@ -28,7 +28,11 @@ def offer_to_delete_now_unused_media(
     names = [media.original_filename for media in unused]
     if not ask_delete_now_unused_media(names, parent=parent):
         return
-    failures = media_service.delete_unused_media([media.id for media in unused])
+    try:
+        failures = media_service.delete_unused_media([media.id for media in unused])
+    except ServiceError as exc:
+        show_error(str(exc), parent=parent)
+        return
     if failures:
         failed_names = [media.original_filename for media in failures]
         show_error(

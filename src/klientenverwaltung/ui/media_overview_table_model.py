@@ -99,5 +99,20 @@ class MediaOverviewTableModel(QAbstractTableModel):
         if key is None:
             return
         self.layoutAboutToBeChanged.emit()
+        old_persistent_indexes = self.persistentIndexList()
+        old_entries_by_row = list(self._entries)
         self._entries.sort(key=key, reverse=order == Qt.SortOrder.DescendingOrder)
+        # Persistent indexes (which the selection model relies on) must be
+        # remapped by identity, not just re-emitted - otherwise Qt keeps
+        # the selection on the same *row number*, which after this sort
+        # may hold a completely different entry. entry_at() equality is by
+        # dataclass value, not identity, but two entries are only equal if
+        # every field matches - practically unique per media_id/stored_filename
+        # - so a plain index() lookup is fine here.
+        new_row_of = {entry: row for row, entry in enumerate(self._entries)}
+        new_persistent_indexes = [
+            self.index(new_row_of[old_entries_by_row[index.row()]], index.column())
+            for index in old_persistent_indexes
+        ]
+        self.changePersistentIndexList(old_persistent_indexes, new_persistent_indexes)
         self.layoutChanged.emit()

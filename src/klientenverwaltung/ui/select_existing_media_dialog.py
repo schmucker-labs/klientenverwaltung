@@ -10,7 +10,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.services import MediaService
+from klientenverwaltung.services import MediaService, ServiceError
+from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.media_picker_table_model import (
     COLUMN_TITLES,
     MediaPickerTableModel,
@@ -125,5 +126,9 @@ class SelectExistingMediaDialog(QDialog):
         media_ids = [self._table_model.entry_at(row.row()).media_id for row in rows]
         if not media_ids:
             return
-        self._media_service.link_existing_media(self._session_id, media_ids)
+        try:
+            self._media_service.link_existing_media(self._session_id, media_ids)
+        except ServiceError as exc:
+            show_error(str(exc), parent=self)
+            return
         self.accept()

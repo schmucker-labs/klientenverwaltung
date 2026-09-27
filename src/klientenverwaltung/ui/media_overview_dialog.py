@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.services import MediaOverviewEntry, MediaService
+from klientenverwaltung.services import MediaOverviewEntry, MediaService, ServiceError
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.media_overview_table_model import (
     COLUMN_TITLES,
@@ -254,7 +254,11 @@ class MediaOverviewDialog(QDialog):
             return
         known_ids = [e.media_id for e in entries if e.media_id is not None]
         unknown_names = [e.stored_filename for e in entries if e.media_id is None]
-        failures = self._media_service.delete_unused_media(known_ids)
+        try:
+            failures = self._media_service.delete_unused_media(known_ids)
+        except ServiceError as exc:
+            show_error(str(exc), parent=self)
+            return
         failed_unknown = [
             name
             for name in unknown_names
