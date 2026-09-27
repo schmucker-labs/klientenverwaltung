@@ -53,9 +53,17 @@ class LoadingDialog(QDialog):
         (success, failure, or cancelled) - stops the delayed-show timer
         (so it can't pop the dialog back up afterwards) and closes it,
         harmless even if it was never shown at all.
+
+        Uses done() rather than close(): QDialog's default closeEvent()
+        calls reject() when nothing else does, which would loop straight
+        back into this class's own overridden reject() below (there to
+        make Escape/the window's X act like "Abbrechen") - which only
+        re-emits `cancelled` and never actually closes anything. done()
+        hides the dialog directly without going through closeEvent/reject
+        at all.
         """
         self._show_timer.stop()
-        self.close()
+        self.done(QDialog.DialogCode.Rejected)
 
     def _on_cancel_clicked(self) -> None:
         self.cancelled.emit()
