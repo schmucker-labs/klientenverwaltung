@@ -107,3 +107,7 @@ oder eine Tabelle mit Spalten hinzukommt.
 - Bei gestylten QSpinBox, QDoubleSpinBox und QDateTimeEdit immer up-button UND
   down-button vollständig definieren (Breite, Höhe, subcontrol-origin/-position),
   sonst wird eine der beiden Klickflächen winzig, obwohl der Pfeil normal aussieht.
+- In reinen Anzeige-Fenstern (keine Eingabefelder, z. B. die Klientenübersicht) werden
+  leere Felder komplett weggelassen, samt Beschriftung - ein Abschnitt ohne Inhalt
+  verschwindet vollständig, es bleibt keine Lücke stehen. Doppelklick in der
+  Klientenliste öffnet diese Ansicht, nicht mehr direkt den Bearbeiten-Dialog.
