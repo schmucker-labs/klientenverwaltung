@@ -6,8 +6,11 @@ Mit erfundenen Testdaten aufnehmen (z. B. "Anna Muster"), unter `docs/screenshot
 und im README verlinken:
 
 - Klientenliste (Hauptfenster, Light-Theme) – Suche, Filter, Spalten "letzte Sitzung"/"nächster Termin"
+- Klientenübersicht (reine Ansicht, per Doppelklick/Kontextmenü "Ansicht")
+- Berichtsverlauf eines Klienten (zwei Spalten Bericht/Impulse, formatiert)
 - Klientendetail-Formular
 - Sitzungsfenster eines Klienten
+- Bericht-Formularfenster mit Formatierungs-Werkzeugleiste
 - Einrichtungsassistent (z. B. Passwortvergabe-Schritt)
 - Backup-Verwaltung
 - Dieselbe Hauptansicht im Dark-Theme, zum Vergleich mit Light
@@ -27,6 +30,9 @@ und im README verlinken:
 
 ## Später
 
+- Phase C (Medien) – nächste geplante Phase nach A (Bericht-Formatierung, erledigt)
+  und B (Klientenübersicht/Berichtsverlauf, erledigt). Umfang noch nicht im Detail
+  festgelegt.
 - Export (CSV/PDF), Statistiken wie Sitzungen pro Monat
 - Terminübersicht/Kalender (Ausbaustufe nach dem MVP)
   - Schlanke Variante zuerst: Liste aller zukünftigen Sitzungen aller Klienten, nach Datum sortiert, mit Klient, Uhrzeit und Behandlungsart; Klick springt zum Klienten; Umschaltung kommende Termine / Vergangenheit. Nutzt die bestehende session-Tabelle, im Wesentlichen nur Oberfläche.
