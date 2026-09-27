@@ -3,7 +3,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from klientenverwaltung.services.media_service import MediaKind, SessionMediaEntry
 
 COLUMN_TITLES = ("Name", "Art", "Größe", "Hinzugefügt am")
-_KIND_LABELS: dict[MediaKind, str] = {
+KIND_LABELS: dict[MediaKind, str] = {
     "image": "Bild",
     "video": "Video",
     "audio": "Audio",
@@ -73,7 +73,7 @@ class MediaTableModel(QAbstractTableModel):
         if column == 0:
             return entry.original_filename
         if column == 1:
-            return _KIND_LABELS[entry.media_kind]
+            return KIND_LABELS[entry.media_kind]
         if column == 2:
             return format_size_bytes(entry.size_bytes)
         if column == 3:
