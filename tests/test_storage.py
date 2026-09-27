@@ -299,3 +299,34 @@ class TestOpenDatabase:
             engine.connect() as connection,
         ):
             connection.execute(text("SELECT * FROM client"))
+
+
+class TestCreateEncryptedEngineThreading:
+    def test_connection_works_from_a_different_thread(self, tmp_path: Path) -> None:
+        """The media importer (Auftrag C1) runs its DB writes on a background
+        QThread while the GUI thread may still be using this same engine -
+        sqlite3 otherwise refuses a connection object outside the thread
+        that created it. SQLAlchemy's pysqlcipher/pysqlite dialect already
+        passes check_same_thread=False for a file-based database, so this
+        already works today; pinned here so a future dependency upgrade
+        can't silently take it away.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        db_path = drive / storage.DB_FILENAME
+        engine = storage.create_encrypted_engine(db_path, "ein-sehr-sicheres-passwort")
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+
+            def _query_from_other_thread() -> int:
+                with engine.connect() as other_connection:
+                    return other_connection.execute(text("SELECT 1")).scalar()
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                result = pool.submit(_query_from_other_thread).result()
+            assert result == 1
+        finally:
+            engine.dispose()
