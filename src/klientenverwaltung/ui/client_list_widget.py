@@ -1,9 +1,10 @@
-from PySide6.QtCore import QModelIndex, QTimer
+from PySide6.QtCore import QModelIndex, QPoint, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QHBoxLayout,
     QLineEdit,
+    QMenu,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -18,6 +19,7 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
+from klientenverwaltung.ui.client_overview_dialog import ClientOverviewDialog
 from klientenverwaltung.ui.client_table_model import COLUMN_TITLES, ClientTableModel
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.window_settings import (
@@ -107,6 +109,8 @@ class ClientListWidget(QWidget):
             self._update_button_states
         )
         self._table_view.doubleClicked.connect(self._on_row_double_clicked)
+        self._table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table_view.customContextMenuRequested.connect(self._show_context_menu)
         self._new_button.clicked.connect(self._on_new_clicked)
         self._edit_button.clicked.connect(self._on_edit_clicked)
         self._archive_button.clicked.connect(self._on_archive_clicked)
@@ -176,11 +180,48 @@ class ClientListWidget(QWidget):
             return
         self._open_detail_dialog(entry.id)
 
+    def _open_overview_dialog(self, client_id: int) -> None:
+        dialog = ClientOverviewDialog(
+            self._client_service,
+            self._treatment_type_service,
+            self._treatment_session_service,
+            client_id,
+            parent=self,
+        )
+        dialog.exec()
+        self._reload()
+
     def _on_row_double_clicked(self, index: QModelIndex) -> None:
         if not index.isValid():
             return
         entry = self._table_model.entry_at(index.row())
-        self._open_detail_dialog(entry.id)
+        self._open_overview_dialog(entry.id)
+
+    def _show_context_menu(self, pos: QPoint) -> None:
+        index = self._table_view.indexAt(pos)
+        if not index.isValid():
+            return
+        self._table_view.selectRow(index.row())
+        entry = self._table_model.entry_at(index.row())
+
+        menu = QMenu(self)
+        view_action = menu.addAction("Ansicht")
+        edit_action = menu.addAction("Bearbeiten")
+        menu.addSeparator()
+        archive_action = menu.addAction(
+            "Wiederherstellen" if entry.archived else "Archivieren"
+        )
+        delete_action = menu.addAction("Löschen")
+
+        chosen = menu.exec(self._table_view.viewport().mapToGlobal(pos))
+        if chosen is view_action:
+            self._open_overview_dialog(entry.id)
+        elif chosen is edit_action:
+            self._open_detail_dialog(entry.id)
+        elif chosen is archive_action:
+            self._on_archive_clicked()
+        elif chosen is delete_action:
+            self._on_delete_clicked()
 
     def _on_archive_clicked(self) -> None:
         entry = self._selected_entry()
