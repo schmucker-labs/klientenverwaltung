@@ -130,10 +130,19 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 - Mediendateien liegen im Ordner "medien" auf der Datenplatte, benannt mit einer
   UUID statt dem Originalnamen. Eine Datei kann mehreren Sitzungen zugeordnet sein
   (Duplikate werden über den Dateiinhalt/SHA-256 erkannt, nie erneut kopiert).
-  Sitzung/Klient löschen entfernt nur die Verknüpfung (`session_media`), nie die
-  Datei oder den `media`-Eintrag (Aufräumen verwaister Dateien ist Auftrag C2).
   Das Original bleibt immer unverändert, wo der Anwender es ausgewählt hat -
   das Programm löscht es nie.
+- Mediendateien werden NIE automatisch gelöscht, nur nach ausdrücklicher
+  Bestätigung des Anwenders. Sitzung löschen, Klient endgültig löschen und
+  "Verknüpfung entfernen" im Medienfenster entfernen zunächst nur die
+  Verknüpfung (`session_media`); wird eine Datei dadurch von keiner Sitzung
+  mehr verwendet, fragt das Programm danach einmal, ob sie jetzt endgültig
+  gelöscht werden soll (Auftrag C2) - "Behalten" lässt sie unverändert liegen,
+  sichtbar in der Medienübersicht als 0×. Gilt NICHT für Archivieren. Die
+  Medienübersicht (Menü "Einstellungen") zeigt jede Datei, ihre Verwendung
+  und erkennt beide Abweichungen zwischen Medienordner und Datenbank: einen
+  DB-Eintrag ohne Datei ("Datei fehlt") und eine Datei ohne DB-Eintrag
+  ("Unbekannte Datei").
 
 ## Speicherung, Verschlüsselung, Sicherheit
 
