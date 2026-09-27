@@ -283,6 +283,7 @@ class ClientOverviewDialog(QDialog):
             self._client_service,
             self._treatment_type_service,
             self._treatment_session_service,
+            self._media_service,
             self._client_id,
             parent=self,
         )
