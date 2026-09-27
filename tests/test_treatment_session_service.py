@@ -355,3 +355,56 @@ def test_save_report_blank_content_stored_as_none(
 
     assert updated.report is None
     assert updated.impulses is None
+
+
+def test_count_sessions_with_content_counts_only_sessions_with_report_or_impulses(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    no_content = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 10, 9, 0),
+        duration_minutes=60,
+    )
+    report_only = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 11, 9, 0),
+        duration_minutes=60,
+    )
+    impulses_only = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 12, 9, 0),
+        duration_minutes=60,
+    )
+    both = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 13, 9, 0),
+        duration_minutes=60,
+    )
+    treatment_session_service.save_report(
+        no_content.id, report=None, impulses=None
+    )
+    treatment_session_service.save_report(
+        report_only.id, report="<p>Bericht</p>", impulses=None
+    )
+    treatment_session_service.save_report(
+        impulses_only.id, report=None, impulses="<p>Impuls</p>"
+    )
+    treatment_session_service.save_report(
+        both.id, report="<p>Bericht</p>", impulses="<p>Impuls</p>"
+    )
+
+    assert (
+        treatment_session_service.count_sessions_with_content(client.id) == 3
+    )
+
+
+def test_count_sessions_with_content_is_zero_for_client_without_sessions(
+    treatment_session_service: TreatmentSessionService, client: Client
+) -> None:
+    assert treatment_session_service.count_sessions_with_content(client.id) == 0
