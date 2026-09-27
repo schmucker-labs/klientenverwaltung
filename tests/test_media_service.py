@@ -6,7 +6,7 @@ import pytest
 
 from klientenverwaltung.models import Client, TreatmentSession, TreatmentType
 from klientenverwaltung.services import MediaService, NotFoundError
-from klientenverwaltung.services.media_service import ImportOutcome
+from klientenverwaltung.services.media_service import ImportOutcome, MediaUsageEntry
 
 
 def _make_source_file(tmp_path: Path, name: str, content: bytes) -> Path:
@@ -273,3 +273,110 @@ def test_cleanup_orphaned_part_files_returns_zero_when_medien_folder_is_missing(
 ) -> None:
     service = MediaService(session_factory, tmp_path / "drive")
     assert service.cleanup_orphaned_part_files() == 0
+
+
+def test_list_all_media_reports_usage_count_and_normal_entries(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 20)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.link_existing_media(other_session.id, [outcome.media.id])
+
+    entries = media_service.list_all_media()
+
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.media_id == outcome.media.id
+    assert entry.original_filename == "foto.jpg"
+    assert entry.usage_count == 2
+    assert entry.file_missing is False
+    assert entry.size_bytes == 20
+
+
+def test_list_all_media_detects_a_missing_file(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_service.resolve_media_path(outcome.media).unlink()  # simulate manual deletion
+
+    entries = media_service.list_all_media()
+
+    assert len(entries) == 1
+    assert entries[0].media_id == outcome.media.id
+    assert entries[0].file_missing is True
+    assert entries[0].usage_count == 1  # the DB link still exists
+
+
+def test_list_all_media_detects_an_unknown_file_but_ignores_part_files(
+    media_service: MediaService, tmp_path: Path
+) -> None:
+    media_dir = media_service.resolve_media_path_for_stored_filename("x").parent
+    media_dir.mkdir(parents=True)
+    unknown = media_dir / "12345678deadbeef.png"
+    unknown.write_bytes(b"?" * 7)
+    in_progress = media_dir / "abcdef0123456789.mp4.part"
+    in_progress.write_bytes(b"partial")
+
+    entries = media_service.list_all_media()
+
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.media_id is None
+    assert entry.original_filename is None
+    assert entry.stored_filename == "12345678deadbeef.png"
+    assert entry.media_kind == "image"
+    assert entry.size_bytes == 7
+    assert entry.usage_count == 0
+
+
+def test_list_usages_returns_client_name_and_session_date(
+    media_service: MediaService,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+
+    usages = media_service.list_usages(outcome.media.id)
+
+    assert usages == [
+        MediaUsageEntry(
+            client_name=f"{client.first_name} {client.last_name}",
+            session_date=treatment_session.date,
+        )
+    ]
+
+
+def test_count_sessions_for_media_reflects_number_of_links(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    assert media_service.count_sessions_for_media(outcome.media.id) == 1
+
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    media_service.link_existing_media(other_session.id, [outcome.media.id])
+    assert media_service.count_sessions_for_media(outcome.media.id) == 2

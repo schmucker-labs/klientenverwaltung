@@ -14,7 +14,9 @@ from klientenverwaltung.services.errors import (
 from klientenverwaltung.services.media_service import (
     ImportOutcome,
     MediaKind,
+    MediaOverviewEntry,
     MediaService,
+    MediaUsageEntry,
     SessionMediaEntry,
     classify_media_kind,
 )
@@ -31,7 +33,9 @@ __all__ = [
     "ConflictError",
     "ImportOutcome",
     "MediaKind",
+    "MediaOverviewEntry",
     "MediaService",
+    "MediaUsageEntry",
     "NotFoundError",
     "ServiceError",
     "SessionMediaEntry",

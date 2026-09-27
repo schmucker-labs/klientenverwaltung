@@ -78,6 +78,34 @@ class ImportOutcome:
     original_filename: str
 
 
+@dataclass(frozen=True)
+class MediaOverviewEntry:
+    """One row of the Medienübersicht (Auftrag C2) - covers three cases:
+    a normal media row; a DB row whose file is missing from the medien
+    folder (file_missing=True); or a file found in the medien folder with
+    no matching DB row at all (media_id=None, original_filename=None,
+    "Unbekannte Datei" in the UI).
+    """
+
+    media_id: int | None
+    stored_filename: str
+    original_filename: str | None
+    media_kind: MediaKind
+    size_bytes: int
+    created_at: datetime | None
+    usage_count: int
+    file_missing: bool
+
+
+@dataclass(frozen=True)
+class MediaUsageEntry:
+    """One session a media file is attached to (Medienübersicht's
+    "Verwendet in:" panel)."""
+
+    client_name: str
+    session_date: datetime
+
+
 def _process_file(
     source_path: Path,
     total_size: int,
@@ -268,6 +296,77 @@ class MediaService:
 
     def resolve_media_path_for_entry(self, entry: SessionMediaEntry) -> Path:
         return self._media_dir / entry.stored_filename
+
+    def resolve_media_path_for_stored_filename(self, stored_filename: str) -> Path:
+        return self._media_dir / stored_filename
+
+    def list_all_media(self) -> list[MediaOverviewEntry]:
+        with self._session_factory() as session:
+            repo = MediaRepository(session)
+            all_media = repo.list_all()
+            usage = repo.usage_counts_for_media([media.id for media in all_media])
+            entries = [
+                MediaOverviewEntry(
+                    media_id=media.id,
+                    stored_filename=media.stored_filename,
+                    original_filename=media.original_filename,
+                    media_kind=media.media_kind,  # type: ignore[arg-type]
+                    size_bytes=media.size_bytes,
+                    created_at=media.created_at,
+                    usage_count=usage.get(media.id, 0),
+                    file_missing=not (self._media_dir / media.stored_filename).exists(),
+                )
+                for media in all_media
+            ]
+            known_stored_filenames = {media.stored_filename for media in all_media}
+
+        if self._media_dir.exists():
+            for path in sorted(self._media_dir.iterdir()):
+                if (
+                    not path.is_file()
+                    or path.suffix == ".part"
+                    or path.name in known_stored_filenames
+                ):
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                entries.append(
+                    MediaOverviewEntry(
+                        media_id=None,
+                        stored_filename=path.name,
+                        original_filename=None,
+                        media_kind=classify_media_kind(path.name),
+                        size_bytes=stat.st_size,
+                        created_at=datetime.fromtimestamp(stat.st_mtime),
+                        usage_count=0,
+                        file_missing=False,
+                    )
+                )
+        return entries
+
+    def list_usages(self, media_id: int) -> list[MediaUsageEntry]:
+        with self._session_factory() as session:
+            rows = MediaRepository(session).list_usages_for_media(media_id)
+        return [
+            MediaUsageEntry(client_name=f"{first} {last}", session_date=date)
+            for first, last, date in rows
+        ]
+
+    def count_sessions_for_media(self, media_id: int) -> int:
+        with self._session_factory() as session:
+            usage = MediaRepository(session).usage_counts_for_media([media_id])
+        return usage.get(media_id, 0)
+
+    def link_existing_media(self, session_id: int, media_ids: Sequence[int]) -> None:
+        with self._session_factory() as session:
+            repo = MediaRepository(session)
+            for media_id in media_ids:
+                if not repo.is_linked(session_id, media_id):
+                    repo.link(session_id, media_id)
+            with transaction(session, "Dateien konnten nicht zugeordnet werden."):
+                pass
 
     def cleanup_orphaned_part_files(self) -> int:
         """Removes .part files left behind by an import that never
