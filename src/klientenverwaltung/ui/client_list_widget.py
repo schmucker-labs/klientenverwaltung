@@ -23,6 +23,7 @@ from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_overview_dialog import ClientOverviewDialog
 from klientenverwaltung.ui.client_table_model import COLUMN_TITLES, ClientTableModel
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
+from klientenverwaltung.ui.media_cleanup import offer_to_delete_now_unused_media
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_header_state,
@@ -254,9 +255,11 @@ class ClientListWidget(QWidget):
         )
         if not confirmed:
             return
+        candidate_media_ids = self._media_service.list_media_ids_for_client(entry.id)
         try:
             self._client_service.delete_client(entry.id)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
+        offer_to_delete_now_unused_media(self._media_service, candidate_media_ids, parent=self)
         self._reload()
