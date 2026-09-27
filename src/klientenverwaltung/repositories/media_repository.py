@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from klientenverwaltung.models import Media, SessionMedia
+from klientenverwaltung.models import Client, Media, SessionMedia, TreatmentSession
 
 
 class MediaRepository:
@@ -17,6 +17,12 @@ class MediaRepository:
         self._session.add(media)
         self._session.flush()
         return media
+
+    def list_all(self) -> list[Media]:
+        return list(self._session.scalars(select(Media)))
+
+    def delete(self, media: Media) -> None:
+        self._session.delete(media)
 
     def get_by_id(self, media_id: int) -> Media | None:
         return self._session.get(Media, media_id)
@@ -57,6 +63,48 @@ class MediaRepository:
             .group_by(SessionMedia.session_id)
         )
         return dict(self._session.execute(stmt).all())
+
+    def usage_counts_for_media(self, media_ids: Sequence[int]) -> dict[int, int]:
+        if not media_ids:
+            return {}
+        stmt = (
+            select(SessionMedia.media_id, func.count(SessionMedia.session_id))
+            .where(SessionMedia.media_id.in_(media_ids))
+            .group_by(SessionMedia.media_id)
+        )
+        return dict(self._session.execute(stmt).all())
+
+    def list_usages_for_media(self, media_id: int) -> list[tuple[str, str, datetime]]:
+        stmt = (
+            select(Client.first_name, Client.last_name, TreatmentSession.date)
+            .select_from(SessionMedia)
+            .join(TreatmentSession, TreatmentSession.id == SessionMedia.session_id)
+            .join(Client, Client.id == TreatmentSession.client_id)
+            .where(SessionMedia.media_id == media_id)
+            .order_by(TreatmentSession.date.desc())
+        )
+        return list(self._session.execute(stmt).all())
+
+    def list_media_ids_for_client(self, client_id: int) -> list[int]:
+        stmt = (
+            select(SessionMedia.media_id)
+            .join(TreatmentSession, TreatmentSession.id == SessionMedia.session_id)
+            .where(TreatmentSession.client_id == client_id)
+            .distinct()
+        )
+        return list(self._session.scalars(stmt))
+
+    def list_unlinked_for_session(
+        self, session_id: int, search: str | None = None
+    ) -> list[Media]:
+        linked_subquery = select(SessionMedia.media_id).where(
+            SessionMedia.session_id == session_id
+        )
+        stmt = select(Media).where(Media.id.not_in(linked_subquery))
+        if search:
+            stmt = stmt.where(Media.original_filename.ilike(f"%{search}%"))
+        stmt = stmt.order_by(Media.original_filename)
+        return list(self._session.scalars(stmt))
 
     def _get_link(self, session_id: int, media_id: int) -> SessionMedia | None:
         return self._session.get(SessionMedia, (session_id, media_id))
