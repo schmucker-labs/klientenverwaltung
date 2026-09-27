@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import pytest
+from sqlalchemy.orm import Session, sessionmaker
 
 from klientenverwaltung.models import Client, TreatmentSession, TreatmentType
 from klientenverwaltung.services import (
@@ -407,4 +408,29 @@ def test_count_sessions_with_content_counts_only_sessions_with_report_or_impulse
 def test_count_sessions_with_content_is_zero_for_client_without_sessions(
     treatment_session_service: TreatmentSessionService, client: Client
 ) -> None:
+    assert treatment_session_service.count_sessions_with_content(client.id) == 0
+
+
+def test_count_sessions_with_content_does_not_count_empty_string_content(
+    treatment_session_service: TreatmentSessionService,
+    session_factory: sessionmaker[Session],
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    """save_report() normalizes blank content to None before it ever reaches
+    the database, so this bypasses it to write empty strings directly -
+    proving count_sessions_with_content() itself treats "" as no content
+    (via truthiness), not just that save_report() never lets "" through."""
+    created = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 14, 9, 0),
+        duration_minutes=60,
+    )
+    with session_factory() as db_session:
+        treatment_session = db_session.get(TreatmentSession, created.id)
+        treatment_session.report = ""
+        treatment_session.impulses = ""
+        db_session.commit()
+
     assert treatment_session_service.count_sessions_with_content(client.id) == 0

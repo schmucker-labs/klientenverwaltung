@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -329,3 +329,22 @@ def test_build_address_block_name_line_omits_missing_salutation() -> None:
     client = Client(salutation=None, first_name="Anna", last_name="Muster")
     block = ClientService.build_address_block(client)
     assert block.name_line == "Anna Muster"
+
+
+def test_client_since_date_converts_utc_created_at_to_local_calendar_date() -> None:
+    # created_at is stored as a naive UTC timestamp (SQLite's
+    # CURRENT_TIMESTAMP) - late evening UTC rolls into the next local day
+    # for a positive UTC offset.
+    created_at_utc = datetime(2026, 1, 15, 23, 30)
+    local_tz = timezone(timedelta(hours=2))
+    assert ClientService.client_since_date(
+        created_at_utc, local_tz=local_tz
+    ) == date(2026, 1, 16)
+
+
+def test_client_since_date_keeps_same_local_day_when_no_midnight_crossing() -> None:
+    created_at_utc = datetime(2026, 1, 15, 10, 0)
+    local_tz = timezone(timedelta(hours=2))
+    assert ClientService.client_since_date(
+        created_at_utc, local_tz=local_tz
+    ) == date(2026, 1, 15)

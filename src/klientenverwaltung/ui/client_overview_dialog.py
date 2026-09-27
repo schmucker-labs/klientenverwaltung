@@ -172,8 +172,9 @@ class ClientOverviewDialog(QDialog):
                     panel,
                 )
             )
+        since_date = self._client_service.client_since_date(client.created_at)
         layout.addWidget(
-            QLabel(f"Klient seit: {client.created_at.strftime('%d.%m.%Y')}", panel)
+            QLabel(f"Klient seit: {since_date.strftime('%d.%m.%Y')}", panel)
         )
         return panel
 
@@ -232,7 +233,7 @@ class ClientOverviewDialog(QDialog):
                 + (
                     summary.next_session_date.strftime("%d.%m.%Y")
                     if summary.next_session_date is not None
-                    else "keine"
+                    else "keiner"
                 ),
                 panel,
             )

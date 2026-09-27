@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, tzinfo
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -253,6 +253,19 @@ class ClientService:
     @staticmethod
     def _normalize_optional(text: str | None) -> str | None:
         return _normalize_casing(text) if text else text
+
+    @staticmethod
+    def client_since_date(created_at: datetime, *, local_tz: tzinfo | None = None) -> date:
+        """The local calendar date of a client's created_at timestamp.
+
+        created_at is stored as a naive UTC timestamp (SQLite's
+        CURRENT_TIMESTAMP) while the rest of the app works with naive local
+        datetimes - shown as-is, "Klient seit" would show the previous day
+        for a client created late at night local time. local_tz is only
+        for tests; production code always converts to the system's local
+        timezone (astimezone(None)).
+        """
+        return created_at.replace(tzinfo=UTC).astimezone(local_tz).date()
 
     @staticmethod
     def compute_age(birth_date: date, *, today: date | None = None) -> int:
