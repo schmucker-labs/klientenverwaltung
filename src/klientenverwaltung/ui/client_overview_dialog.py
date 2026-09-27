@@ -18,6 +18,9 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
+from klientenverwaltung.ui.client_report_history_dialog import (
+    ClientReportHistoryDialog,
+)
 from klientenverwaltung.ui.client_sessions_dialog import ClientSessionsDialog
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
@@ -64,6 +67,7 @@ class ClientOverviewDialog(QDialog):
         self._edit_button = QPushButton("Bearbeiten", self)
         close_button = QPushButton("Schließen", self)
         close_button.setDefault(True)
+        self._report_button.clicked.connect(self._on_report_clicked)
         self._sessions_button.clicked.connect(self._on_sessions_clicked)
         self._edit_button.clicked.connect(self._on_edit_clicked)
         close_button.clicked.connect(self.accept)
@@ -245,6 +249,17 @@ class ClientOverviewDialog(QDialog):
         font.setBold(True)
         label.setFont(font)
         return label
+
+    def _on_report_clicked(self) -> None:
+        client = self._client_service.get_client(self._client_id)
+        client_name = f"{client.first_name} {client.last_name}"
+        dialog = ClientReportHistoryDialog(
+            self._treatment_session_service,
+            self._client_id,
+            client_name,
+            parent=self,
+        )
+        dialog.exec()
 
     def _on_sessions_clicked(self) -> None:
         client = self._client_service.get_client(self._client_id)
