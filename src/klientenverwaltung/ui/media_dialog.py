@@ -74,6 +74,8 @@ class MediaDialog(QDialog):
         self._thread: QThread | None = None
         self._worker: MediaImportWorker | None = None
         self._loading_dialog: LoadingDialog | None = None
+        self._pending_source_path: Path | None = None
+        self._importing = False
 
         self.setWindowTitle(f"Medien: {client_name}")
         self.setModal(True)
@@ -165,8 +167,8 @@ class MediaDialog(QDialog):
 
     def _update_button_states(self) -> None:
         has_selection = self._selected_entry() is not None
-        self._open_button.setEnabled(has_selection)
-        self._remove_link_button.setEnabled(has_selection)
+        self._open_button.setEnabled(has_selection and not self._importing)
+        self._remove_link_button.setEnabled(has_selection and not self._importing)
 
     def _on_attach_clicked(self) -> None:
         path_str, _selected_filter = QFileDialog.getOpenFileName(
@@ -177,6 +179,7 @@ class MediaDialog(QDialog):
         self._start_import(Path(path_str))
 
     def _start_import(self, source_path: Path) -> None:
+        self._pending_source_path = source_path
         self._set_busy(True)
         self._loading_dialog = LoadingDialog(self)
         self._thread = QThread(self)
@@ -184,13 +187,26 @@ class MediaDialog(QDialog):
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self._loading_dialog.set_progress)
-        self._loading_dialog.cancelled.connect(self._worker.cancel)
+        # DirectConnection, deliberately: the worker thread spends the whole
+        # import inside run(), so its event loop never runs and a queued
+        # connection here would only ever be delivered after the copy has
+        # already finished on its own - "Abbrechen" would do nothing. A
+        # direct cross-thread call is safe because cancel() only sets a
+        # threading.Event, which is thread-safe by design.
+        self._loading_dialog.cancelled.connect(
+            self._worker.cancel, Qt.ConnectionType.DirectConnection
+        )
         self._worker.duplicate_found.connect(
             self._on_duplicate_found, Qt.ConnectionType.BlockingQueuedConnection
         )
-        self._worker.finished.connect(
-            lambda outcome: self._on_import_finished(outcome, source_path)
-        )
+        # Bound methods (not lambdas): a lambda has no receiver QObject, so
+        # AutoConnection cannot resolve it to a queued connection and calls
+        # it directly on the emitting (worker) thread instead - which then
+        # touches this dialog's widgets, a GUI-thread QTimer and a
+        # QMessageBox from off-thread. Bound methods of this QObject carry
+        # a receiver context, so AutoConnection correctly queues them onto
+        # the GUI thread.
+        self._worker.finished.connect(self._on_import_finished)
         self._worker.failed.connect(self._on_import_failed)
         self._thread.start()
 
@@ -208,11 +224,20 @@ class MediaDialog(QDialog):
         self._set_busy(False)
 
     def _set_busy(self, busy: bool) -> None:
+        self._importing = busy
         self._attach_button.setEnabled(not busy)
         self._close_button.setEnabled(not busy)
+        self._table_view.setEnabled(not busy)
+        self._update_button_states()
 
-    def _on_import_finished(self, outcome: ImportOutcome, source_path: Path) -> None:
+    def reject(self) -> None:
+        if self._importing:
+            return
+        super().reject()
+
+    def _on_import_finished(self, outcome: ImportOutcome) -> None:
         assert self._loading_dialog is not None
+        source_path = self._pending_source_path
         self._loading_dialog.finish()
         self._cleanup_thread()
         self._reload_media()

@@ -49,6 +49,17 @@ class MediaImportWorker(QObject):
         except ServiceError as exc:
             self.failed.emit(str(exc))
             return
+        except Exception:  # noqa: BLE001
+            # Anything other than a ServiceError (e.g. a plain OSError from
+            # shutil.disk_usage()/Path.stat() if the drive vanishes
+            # mid-copy, or a StorageError from storage.py's own
+            # disconnect-detection hook) must still reach the GUI thread as
+            # a failed signal, never propagate silently off a background
+            # thread - an uncaught exception here leaves the caller's modal
+            # LoadingDialog on screen forever with no way to dismiss it,
+            # since finished/failed would otherwise never fire at all.
+            self.failed.emit("Die Datei konnte nicht übernommen werden.")
+            return
         self.finished.emit(outcome)
 
     def _ask_duplicate(self, original_filename: str) -> bool:

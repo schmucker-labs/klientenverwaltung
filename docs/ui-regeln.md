@@ -111,3 +111,17 @@ oder eine Tabelle mit Spalten hinzukommt.
   leere Felder komplett weggelassen, samt Beschriftung - ein Abschnitt ohne Inhalt
   verschwindet vollständig, es bleibt keine Lücke stehen. Doppelklick in der
   Klientenliste öffnet diese Ansicht, nicht mehr direkt den Bearbeiten-Dialog.
+- Ein Signal eines auf einen QThread verschobenen Worker-Objekts nie mit einer
+  Lambda oder freien Funktion verbinden, nur mit einer gebundenen Methode eines
+  QObjects (z. B. `self._on_x`) - nur eine gebundene Methode trägt einen Empfänger-
+  Kontext, den Qts AutoConnection erkennt und dadurch korrekt in den GUI-Thread
+  einreiht. Eine Lambda hat keinen solchen Kontext und wird stattdessen direkt im
+  Thread des Signals aufgerufen - dort dürfen dann keine Widgets, GUI-Thread-Timer
+  oder QMessageBox angefasst werden (Auftrag C1: genau das führte anfangs dazu,
+  dass ein erfolgreicher Medien-Import die Anwendung beim Anzeigen der
+  Erfolgsmeldung eingefroren hat). Umgekehrt: Ein Slot, der auf dem Worker-Thread
+  laufen soll (z. B. ein reiner `threading.Event.set()`-Aufruf zum Abbrechen),
+  braucht ausdrücklich `Qt.ConnectionType.DirectConnection` - AutoConnection würde
+  ihn sonst in die Ereignisschleife des Worker-Threads einreihen, die während
+  eines laufenden Vorgangs gar nicht läuft und den Slot erst nach dessen Ende
+  zustellen würde.

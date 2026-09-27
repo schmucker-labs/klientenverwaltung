@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -45,8 +46,6 @@ def test_duplicate_content_is_linked_not_recopied(
     client: Client,
     tmp_path: Path,
 ) -> None:
-    from datetime import datetime
-
     other_session = treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,
@@ -169,3 +168,54 @@ def test_import_raises_not_found_for_unknown_session(
     source = _make_source_file(tmp_path, "x.jpg", b"x")
     with pytest.raises(NotFoundError):
         media_service.import_file(999, source)
+
+
+def test_import_records_added_at_as_local_time(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    """MediaTableModel displays added_at with strftime as if it already
+    were local time (matching how session.date is stored) - a bare
+    server_default=func.now() alone would store SQLite's CURRENT_TIMESTAMP,
+    which is UTC, and silently mis-display by the local UTC offset.
+    """
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 10)
+    before = datetime.now()
+    media_service.import_file(treatment_session.id, source)
+    after = datetime.now()
+
+    entries = media_service.list_media_for_session(treatment_session.id)
+    assert len(entries) == 1
+    margin = timedelta(seconds=5)
+    assert before - margin <= entries[0].added_at <= after + margin
+
+
+def test_cancel_during_hash_only_pass_leaves_no_file_and_no_db_row(
+    media_service: MediaService, treatment_session: TreatmentSession, tmp_path: Path
+) -> None:
+    """Cancelling while a same-size candidate forces the hash-only
+    verification pass (no copy_to) must be honored by that pass too, not
+    just by the copy pass exercised in
+    test_cancel_during_copy_leaves_no_file_and_no_db_row.
+    """
+    content = b"y" * 4096
+    first_source = _make_source_file(tmp_path, "first.bin", content)
+    first = media_service.import_file(treatment_session.id, first_source)
+    assert first.status == "imported"
+
+    # Different content, same size as the existing entry -> triggers the
+    # hash-only pass rather than a fresh copy.
+    second_source = _make_source_file(tmp_path, "second.bin", b"z" * 4096)
+    outcome = media_service.import_file(
+        treatment_session.id,
+        second_source,
+        should_cancel=lambda: True,
+        confirm_duplicate=lambda _name: pytest.fail(
+            "must not reach the duplicate question when cancelled first"
+        ),
+    )
+
+    assert outcome == ImportOutcome("cancelled", None, "second.bin")
+    media_dir = media_service.resolve_media_path(first.media).parent
+    assert len(list(media_dir.glob("*"))) == 1  # only the first file, no leftovers
+    entries = media_service.list_media_for_session(treatment_session.id)
+    assert [entry.media_id for entry in entries] == [first.media.id]

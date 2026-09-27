@@ -3,13 +3,20 @@ from PySide6.QtCore import Qt
 
 from klientenverwaltung.ui.backup_table_model import BackupTableModel
 from klientenverwaltung.ui.client_table_model import ClientTableModel
+from klientenverwaltung.ui.media_table_model import MediaTableModel
 from klientenverwaltung.ui.session_table_model import SessionTableModel
 from klientenverwaltung.ui.treatment_type_table_model import TreatmentTypeTableModel
 
 
 @pytest.mark.parametrize(
     "model_cls",
-    [SessionTableModel, ClientTableModel, BackupTableModel, TreatmentTypeTableModel],
+    [
+        SessionTableModel,
+        ClientTableModel,
+        BackupTableModel,
+        TreatmentTypeTableModel,
+        MediaTableModel,
+    ],
 )
 @pytest.mark.parametrize("out_of_range_section", [-1, 999])
 def test_header_data_out_of_range_section_returns_none(
