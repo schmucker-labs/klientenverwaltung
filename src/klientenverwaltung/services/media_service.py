@@ -262,3 +262,6 @@ class MediaService:
 
     def resolve_media_path(self, media: Media) -> Path:
         return self._media_dir / media.stored_filename
+
+    def resolve_media_path_for_entry(self, entry: SessionMediaEntry) -> Path:
+        return self._media_dir / entry.stored_filename

@@ -1,0 +1,272 @@
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QThread, QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTableView,
+    QVBoxLayout,
+    QWidget,
+)
+
+from klientenverwaltung.models import TreatmentSession
+from klientenverwaltung.services import ServiceError
+from klientenverwaltung.services.media_service import (
+    AUDIO_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    ImportOutcome,
+    MediaService,
+    SessionMediaEntry,
+)
+from klientenverwaltung.ui.dialogs import (
+    ask_confirm_delete,
+    ask_use_existing_file,
+    show_error,
+    show_info,
+)
+from klientenverwaltung.ui.loading_dialog import LoadingDialog
+from klientenverwaltung.ui.media_import_worker import MediaImportWorker
+from klientenverwaltung.ui.media_table_model import COLUMN_TITLES, MediaTableModel
+from klientenverwaltung.ui.window_settings import (
+    finalize_column_widths,
+    restore_geometry,
+    restore_header_state,
+    save_geometry,
+    save_header_state,
+)
+
+_GEOMETRY_SETTINGS_KEY = "media_dialog/geometry"
+_TABLE_HEADER_SETTINGS_KEY = "media_dialog/header_state"
+_NAME_COLUMN = 0
+
+
+def _build_file_filter() -> str:
+    extensions = sorted(IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS)
+    patterns = " ".join(f"*{ext}" for ext in extensions)
+    return f"Medien ({patterns});;Alle Dateien (*)"
+
+
+_FILE_FILTER = _build_file_filter()
+
+
+class MediaDialog(QDialog):
+    """Medien zur Sitzung (Auftrag C1) - list/attach/open/unlink files
+    copied onto the data drive for one session. No in-app viewer: "Öffnen"
+    always defers to Windows' own default program for the file type.
+    """
+
+    def __init__(
+        self,
+        media_service: MediaService,
+        session: TreatmentSession,
+        client_name: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._media_service = media_service
+        self._session_id = session.id
+        self._thread: QThread | None = None
+        self._worker: MediaImportWorker | None = None
+        self._loading_dialog: LoadingDialog | None = None
+
+        self.setWindowTitle(f"Medien: {client_name}")
+        self.setModal(True)
+        self.resize(650, 450)
+        restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
+
+        heading = QLabel(
+            "Medien zur Sitzung vom "
+            f"{session.date.strftime('%d.%m.%Y, %H:%M')} Uhr – "
+            f"{session.treatment_type.name}",
+            self,
+        )
+        heading.setWordWrap(True)
+        heading_font = heading.font()
+        heading_font.setBold(True)
+        heading.setFont(heading_font)
+
+        self._table_model = MediaTableModel()
+        self._table_view = QTableView(self)
+        self._table_view.setModel(self._table_model)
+        self._table_view.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._table_view.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self._table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table_view.verticalHeader().setVisible(False)
+        self._table_view.doubleClicked.connect(self._on_open_clicked)
+
+        self._attach_button = QPushButton("Datei anfügen …", self)
+        self._open_button = QPushButton("Öffnen", self)
+        self._remove_link_button = QPushButton("Verknüpfung entfernen", self)
+        self._open_button.setEnabled(False)
+        self._remove_link_button.setEnabled(False)
+        self._attach_button.clicked.connect(self._on_attach_clicked)
+        self._open_button.clicked.connect(self._on_open_clicked)
+        self._remove_link_button.clicked.connect(self._on_remove_link_clicked)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(self._attach_button)
+        button_row.addWidget(self._open_button)
+        button_row.addWidget(self._remove_link_button)
+        button_row.addStretch()
+
+        self._close_button = QPushButton("Schließen", self)
+        self._close_button.clicked.connect(self.accept)
+        close_row = QHBoxLayout()
+        close_row.addStretch()
+        close_row.addWidget(self._close_button)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(heading)
+        layout.addWidget(self._table_view, 1)
+        layout.addLayout(button_row)
+        layout.addLayout(close_row)
+
+        self._reload_media()
+
+        header = self._table_view.horizontalHeader()
+        restored = restore_header_state(header, _TABLE_HEADER_SETTINGS_KEY, COLUMN_TITLES)
+        if not restored:
+            self._table_view.resizeColumnsToContents()
+        finalize_column_widths(header, self._table_model.columnCount(), _NAME_COLUMN, restored)
+        header.sectionResized.connect(self._save_table_header_state)
+        self._table_view.selectionModel().selectionChanged.connect(
+            self._update_button_states
+        )
+
+    def _save_table_header_state(self) -> None:
+        save_header_state(
+            self._table_view.horizontalHeader(), _TABLE_HEADER_SETTINGS_KEY, COLUMN_TITLES
+        )
+
+    def done(self, result: int) -> None:
+        save_geometry(self, _GEOMETRY_SETTINGS_KEY)
+        super().done(result)
+
+    def _reload_media(self) -> None:
+        entries = self._media_service.list_media_for_session(self._session_id)
+        self._table_model.set_entries(entries)
+        self._update_button_states()
+
+    def _selected_entry(self) -> SessionMediaEntry | None:
+        rows = self._table_view.selectionModel().selectedRows()
+        if len(rows) != 1:
+            return None
+        return self._table_model.entry_at(rows[0].row())
+
+    def _update_button_states(self) -> None:
+        has_selection = self._selected_entry() is not None
+        self._open_button.setEnabled(has_selection)
+        self._remove_link_button.setEnabled(has_selection)
+
+    def _on_attach_clicked(self) -> None:
+        path_str, _selected_filter = QFileDialog.getOpenFileName(
+            self, "Datei anfügen", "", _FILE_FILTER
+        )
+        if not path_str:
+            return
+        self._start_import(Path(path_str))
+
+    def _start_import(self, source_path: Path) -> None:
+        self._set_busy(True)
+        self._loading_dialog = LoadingDialog(self)
+        self._thread = QThread(self)
+        self._worker = MediaImportWorker(self._media_service, self._session_id, source_path)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.progress.connect(self._loading_dialog.set_progress)
+        self._loading_dialog.cancelled.connect(self._worker.cancel)
+        self._worker.duplicate_found.connect(
+            self._on_duplicate_found, Qt.ConnectionType.BlockingQueuedConnection
+        )
+        self._worker.finished.connect(
+            lambda outcome: self._on_import_finished(outcome, source_path)
+        )
+        self._worker.failed.connect(self._on_import_failed)
+        self._thread.start()
+
+    def _on_duplicate_found(self, original_filename: str) -> None:
+        answer = ask_use_existing_file(original_filename, parent=self)
+        assert self._worker is not None
+        self._worker.set_duplicate_answer(answer)
+
+    def _cleanup_thread(self) -> None:
+        assert self._thread is not None
+        self._thread.quit()
+        self._thread.wait()
+        self._thread = None
+        self._worker = None
+        self._set_busy(False)
+
+    def _set_busy(self, busy: bool) -> None:
+        self._attach_button.setEnabled(not busy)
+        self._close_button.setEnabled(not busy)
+
+    def _on_import_finished(self, outcome: ImportOutcome, source_path: Path) -> None:
+        assert self._loading_dialog is not None
+        self._loading_dialog.finish()
+        self._cleanup_thread()
+        self._reload_media()
+        if outcome.status == "imported":
+            show_info(
+                "Die Datei wurde auf die Datenplatte übernommen. Das Original "
+                f"liegt weiterhin unter {source_path}. Es kann Gesundheitsdaten "
+                "enthalten – bitte löschen Sie es selbst, wenn es nicht mehr "
+                "gebraucht wird.",
+                parent=self,
+            )
+        elif outcome.status == "already_linked":
+            show_info(
+                "Diese Datei ist dieser Sitzung bereits zugeordnet.", parent=self
+            )
+
+    def _on_import_failed(self, message: str) -> None:
+        assert self._loading_dialog is not None
+        self._loading_dialog.finish()
+        self._cleanup_thread()
+        show_error(message, parent=self)
+
+    def _on_open_clicked(self) -> None:
+        entry = self._selected_entry()
+        if entry is None:
+            return
+        path = self._media_service.resolve_media_path_for_entry(entry)
+        if not path.exists():
+            show_error(
+                "Die Datei wurde auf der Datenplatte nicht gefunden.", parent=self
+            )
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
+            show_error(
+                "Für diese Datei ist auf diesem Computer kein Programm zum "
+                "Öffnen hinterlegt.",
+                parent=self,
+            )
+
+    def _on_remove_link_clicked(self) -> None:
+        entry = self._selected_entry()
+        if entry is None:
+            return
+        confirmed = ask_confirm_delete(
+            f'Verknüpfung von "{entry.original_filename}" zu dieser Sitzung '
+            "entfernen? Die Datei selbst bleibt erhalten.",
+            title="Verknüpfung entfernen",
+            parent=self,
+        )
+        if not confirmed:
+            return
+        try:
+            self._media_service.remove_link(self._session_id, entry.media_id)
+        except ServiceError as exc:
+            show_error(str(exc), parent=self)
+            return
+        self._reload_media()
