@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from klientenverwaltung.models import Base, Client, TreatmentSession, TreatmentType
 from klientenverwaltung.services import (
     ClientService,
+    MediaService,
     TreatmentSessionService,
     TreatmentTypeService,
 )
@@ -91,3 +92,16 @@ def treatment_session(
         date=datetime(2026, 1, 15, 10, 0),
         duration_minutes=60,
     )
+
+
+@pytest.fixture
+def media_service(
+    session_factory: sessionmaker[Session], tmp_path: Path
+) -> MediaService:
+    # The drive itself always exists on a real setup (it's a mounted USB
+    # drive letter) - only its "medien" subfolder is created lazily by the
+    # first import, so shutil.disk_usage() must always have a real
+    # directory to inspect even before that first import.
+    drive_root = tmp_path / "drive"
+    drive_root.mkdir()
+    return MediaService(session_factory, drive_root)

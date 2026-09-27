@@ -11,6 +11,13 @@ from klientenverwaltung.services.errors import (
     SessionOverlapError,
     ValidationError,
 )
+from klientenverwaltung.services.media_service import (
+    ImportOutcome,
+    MediaKind,
+    MediaService,
+    SessionMediaEntry,
+    classify_media_kind,
+)
 from klientenverwaltung.services.treatment_session_service import (
     SessionSummary,
     TreatmentSessionService,
@@ -22,12 +29,17 @@ __all__ = [
     "ClientListEntry",
     "ClientService",
     "ConflictError",
+    "ImportOutcome",
+    "MediaKind",
+    "MediaService",
     "NotFoundError",
     "ServiceError",
+    "SessionMediaEntry",
     "SessionOverlapError",
     "SessionSummary",
     "TreatmentSessionService",
     "TreatmentTypeService",
     "UpcomingAppointment",
     "ValidationError",
+    "classify_media_kind",
 ]
