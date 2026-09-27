@@ -430,6 +430,32 @@ def test_list_sessions_with_content_breaks_same_date_ties_deterministically(
     assert [s.id for s in result] == [second_id, first_id]
 
 
+def test_list_sessions_with_content_is_scoped_to_the_given_client(
+    treatment_session_service: TreatmentSessionService,
+    client_service: ClientService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    """A session with content belonging to a different client must never
+    leak into this client's Berichtsverlauf (Auftrag B2) - this renders
+    health data verbatim under a named client, so a client_id mix-up here
+    would be this app's worst-case bug."""
+    other_client = client_service.create_client(first_name="Ohne", last_name="Zugriff")
+    other_session = treatment_session_service.create_session(
+        client_id=other_client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 1, 10, 9, 0),
+        duration_minutes=60,
+    )
+    treatment_session_service.save_report(
+        other_session.id,
+        report="<p>Gehört einem anderen Klienten</p>",
+        impulses=None,
+    )
+
+    assert treatment_session_service.list_sessions_with_content(client.id) == []
+
+
 def test_list_sessions_with_content_includes_session_with_only_impulses(
     treatment_session_service: TreatmentSessionService,
     client: Client,

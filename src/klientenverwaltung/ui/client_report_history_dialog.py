@@ -82,6 +82,7 @@ class ClientReportHistoryDialog(QDialog):
             f"{session.treatment_type.name}",
             panel,
         )
+        heading.setWordWrap(True)
         heading_font = heading.font()
         heading_font.setBold(True)
         heading.setFont(heading_font)
@@ -100,7 +101,10 @@ class ClientReportHistoryDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._heading_label(title, panel))
         if html:
-            text_edit = GrowingTextEdit(panel)
+            # min_visible_lines=1, not the editor's default comfortable
+            # minimum: this is a read-only display that must be exactly as
+            # tall as its content (Auftrag B2), not padded with blank space.
+            text_edit = GrowingTextEdit(panel, min_visible_lines=1)
             text_edit.setReadOnly(True)
             text_edit.setHtml(html)
             layout.addWidget(text_edit)

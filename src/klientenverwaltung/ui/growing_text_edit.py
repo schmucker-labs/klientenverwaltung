@@ -17,8 +17,14 @@ class GrowingTextEdit(QTextEdit):
     read-only Berichtsverlauf (Auftrag B2, used as-is with setReadOnly(True)).
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        min_visible_lines: int = MIN_VISIBLE_LINES,
+    ) -> None:
         super().__init__(parent)
+        self._min_visible_lines = min_visible_lines
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -42,6 +48,6 @@ class GrowingTextEdit(QTextEdit):
             + margins.bottom()
             + frame
         )
-        min_height = self.fontMetrics().lineSpacing() * MIN_VISIBLE_LINES + extra
+        min_height = self.fontMetrics().lineSpacing() * self._min_visible_lines + extra
         content_height = self.document().size().height() + extra
         self.setFixedHeight(int(max(min_height, content_height)))
