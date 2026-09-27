@@ -571,3 +571,72 @@ def test_list_media_ids_for_client_covers_all_of_that_clients_sessions(
     ids = media_service.list_media_ids_for_client(client.id)
 
     assert set(ids) == {outcome_a.media.id, outcome_b.media.id}
+
+
+def test_list_unlinked_media_for_session_excludes_already_linked_media(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+
+    unlinked_for_original = media_service.list_unlinked_media_for_session(
+        treatment_session.id
+    )
+    unlinked_for_other = media_service.list_unlinked_media_for_session(other_session.id)
+
+    assert unlinked_for_original == []
+    assert [e.media_id for e in unlinked_for_other] == [outcome.media.id]
+
+
+def test_list_unlinked_media_for_session_filters_by_search(
+    media_service: MediaService, treatment_session_service, treatment_type: TreatmentType,
+    client: Client, treatment_session: TreatmentSession, tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    media_service.import_file(treatment_session.id, _make_source_file(tmp_path, "urlaub.jpg", b"a" * 5))
+    media_service.import_file(treatment_session.id, _make_source_file(tmp_path, "arbeit.jpg", b"b" * 5))
+
+    results = media_service.list_unlinked_media_for_session(other_session.id, search="urla")
+
+    assert [e.original_filename for e in results] == ["urlaub.jpg"]
+
+
+def test_link_existing_media_attaches_without_copying(
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
+    outcome = media_service.import_file(treatment_session.id, source)
+    media_dir = media_service.resolve_media_path(outcome.media).parent
+
+    media_service.link_existing_media(other_session.id, [outcome.media.id])
+
+    assert len(list(media_dir.glob("*.jpg"))) == 1  # no second copy
+    entries = media_service.list_media_for_session(other_session.id)
+    assert [e.media_id for e in entries] == [outcome.media.id]

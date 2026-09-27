@@ -65,6 +65,17 @@ class SessionMediaEntry:
 
 
 @dataclass(frozen=True)
+class MediaPickerEntry:
+    """One row of the "Aus vorhandenen Medien" picker (Auftrag C2) - media
+    not yet linked to the session the picker was opened for."""
+
+    media_id: int
+    original_filename: str
+    media_kind: MediaKind
+    size_bytes: int
+
+
+@dataclass(frozen=True)
 class ImportOutcome:
     """Result of MediaService.import_file():
     - "imported": a genuinely new file was copied onto the drive.
@@ -447,6 +458,21 @@ class MediaService:
                     repo.link(session_id, media_id)
             with transaction(session, "Dateien konnten nicht zugeordnet werden."):
                 pass
+
+    def list_unlinked_media_for_session(
+        self, session_id: int, search: str | None = None
+    ) -> list[MediaPickerEntry]:
+        with self._session_factory() as session:
+            rows = MediaRepository(session).list_unlinked_for_session(session_id, search)
+        return [
+            MediaPickerEntry(
+                media_id=media.id,
+                original_filename=media.original_filename,
+                media_kind=media.media_kind,  # type: ignore[arg-type]
+                size_bytes=media.size_bytes,
+            )
+            for media in rows
+        ]
 
     def cleanup_orphaned_part_files(self) -> int:
         """Removes .part files left behind by an import that never
