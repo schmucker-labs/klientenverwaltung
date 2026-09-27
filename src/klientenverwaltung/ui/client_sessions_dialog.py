@@ -16,6 +16,7 @@ from klientenverwaltung.services import (
     TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
+from klientenverwaltung.ui.media_cleanup import offer_to_delete_now_unused_media
 from klientenverwaltung.ui.media_dialog import MediaDialog
 from klientenverwaltung.ui.report_dialog import ReportDialog
 from klientenverwaltung.ui.session_dialog import SessionDialog
@@ -241,9 +242,14 @@ class ClientSessionsDialog(QDialog):
         )
         if not confirmed:
             return
+        candidate_media_ids = [
+            entry.media_id
+            for entry in self._media_service.list_media_for_session(session.id)
+        ]
         try:
             self._treatment_session_service.delete_session(session.id)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
+        offer_to_delete_now_unused_media(self._media_service, candidate_media_ids, parent=self)
         self._reload_sessions()
