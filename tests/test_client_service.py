@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -9,6 +9,7 @@ from klientenverwaltung.services import (
     TreatmentSessionService,
     ValidationError,
 )
+from klientenverwaltung.services.client_service import ClientAddressBlock
 
 
 def test_create_client_persists_and_returns_client(
@@ -252,3 +253,79 @@ def test_list_clients_with_last_session_separates_next_appointment_from_last_ses
     assert [a.date for a in upcoming] == [near_future.date, far_future.date]
     assert upcoming[0].duration_minutes == 45
     assert upcoming[0].treatment_type_name == treatment_type.name
+
+
+@pytest.mark.parametrize(
+    "birth_date,today,expected_age",
+    [
+        (date(1980, 3, 15), date(2026, 3, 15), 46),  # exact birthday
+        (date(1980, 3, 15), date(2026, 3, 14), 45),  # day before birthday
+        (date(1980, 3, 15), date(2026, 3, 16), 46),  # day after birthday
+        (date(2026, 1, 1), date(2026, 1, 1), 0),  # born today
+    ],
+)
+def test_compute_age(birth_date: date, today: date, expected_age: int) -> None:
+    assert ClientService.compute_age(birth_date, today=today) == expected_age
+
+
+def test_build_address_block_with_all_fields_set() -> None:
+    client = Client(
+        salutation="Frau",
+        first_name="Erika",
+        last_name="Musterfrau",
+        street="Hauptstraße 1",
+        postal_code="12345",
+        city="Musterstadt",
+        phone="0123456789",
+        email="erika@example.com",
+    )
+    block = ClientService.build_address_block(client)
+    assert block == ClientAddressBlock(
+        name_line="Frau Erika Musterfrau",
+        lines=["Hauptstraße 1", "12345 Musterstadt"],
+        contact_lines=["Telefon: 0123456789", "E-Mail: erika@example.com"],
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides,expected_lines,expected_contact_lines",
+    [
+        ({"street": None}, ["12345 Musterstadt"], ["Telefon: 0123456789"]),
+        ({"postal_code": None}, ["Hauptstraße 1", "Musterstadt"], ["Telefon: 0123456789"]),
+        ({"city": None}, ["Hauptstraße 1", "12345"], ["Telefon: 0123456789"]),
+        (
+            {"postal_code": None, "city": None},
+            ["Hauptstraße 1"],
+            ["Telefon: 0123456789"],
+        ),
+        ({"phone": None}, ["Hauptstraße 1", "12345 Musterstadt"], []),
+        ({"phone": None, "email": None}, ["Hauptstraße 1", "12345 Musterstadt"], []),
+        ({"salutation": None}, ["Hauptstraße 1", "12345 Musterstadt"], ["Telefon: 0123456789"]),
+    ],
+)
+def test_build_address_block_omits_missing_fields(
+    overrides: dict[str, str | None],
+    expected_lines: list[str],
+    expected_contact_lines: list[str],
+) -> None:
+    fields = {
+        "salutation": "Frau",
+        "first_name": "Erika",
+        "last_name": "Musterfrau",
+        "street": "Hauptstraße 1",
+        "postal_code": "12345",
+        "city": "Musterstadt",
+        "phone": "0123456789",
+        "email": None,
+        **overrides,
+    }
+    client = Client(**fields)
+    block = ClientService.build_address_block(client)
+    assert block.lines == expected_lines
+    assert block.contact_lines == expected_contact_lines
+
+
+def test_build_address_block_name_line_omits_missing_salutation() -> None:
+    client = Client(salutation=None, first_name="Anna", last_name="Muster")
+    block = ClientService.build_address_block(client)
+    assert block.name_line == "Anna Muster"

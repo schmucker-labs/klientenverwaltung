@@ -51,6 +51,21 @@ class UpcomingAppointment:
 
 
 @dataclass(frozen=True)
+class ClientAddressBlock:
+    """The Klientenübersicht's letter-style address block (Auftrag B1).
+
+    name_line is always present (first/last name are mandatory); lines and
+    contact_lines contain only the address/contact lines the client
+    actually has, in display order, so the dialog can render exactly what
+    exists with no empty-field placeholders.
+    """
+
+    name_line: str
+    lines: list[str]
+    contact_lines: list[str]
+
+
+@dataclass(frozen=True)
 class ClientListEntry:
     """One row of the client list: exactly the fields that screen shows."""
 
@@ -238,3 +253,38 @@ class ClientService:
     @staticmethod
     def _normalize_optional(text: str | None) -> str | None:
         return _normalize_casing(text) if text else text
+
+    @staticmethod
+    def compute_age(birth_date: date, *, today: date | None = None) -> int:
+        today = today if today is not None else date.today()
+        age = today.year - birth_date.year
+        if (today.month, today.day) < (birth_date.month, birth_date.day):
+            age -= 1
+        return age
+
+    @staticmethod
+    def build_address_block(client: Client) -> ClientAddressBlock:
+        name_line = " ".join(
+            part
+            for part in (client.salutation, client.first_name, client.last_name)
+            if part
+        )
+
+        lines: list[str] = []
+        if client.street:
+            lines.append(client.street)
+        postal_and_city = " ".join(
+            part for part in (client.postal_code, client.city) if part
+        )
+        if postal_and_city:
+            lines.append(postal_and_city)
+
+        contact_lines: list[str] = []
+        if client.phone:
+            contact_lines.append(f"Telefon: {client.phone}")
+        if client.email:
+            contact_lines.append(f"E-Mail: {client.email}")
+
+        return ClientAddressBlock(
+            name_line=name_line, lines=lines, contact_lines=contact_lines
+        )
