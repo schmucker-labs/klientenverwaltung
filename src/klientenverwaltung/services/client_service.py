@@ -164,6 +164,7 @@ class ClientService:
         notes: str | None = None,
     ) -> ClientDetails:
         first_name, last_name = self._validate_name(first_name, last_name)
+        self._validate_dates(birth_date=birth_date, consent_date=consent_date)
         salutation = self._normalize_optional(salutation)
         street = self._normalize_optional(street)
         city = self._normalize_optional(city)
@@ -258,6 +259,7 @@ class ClientService:
         notes: str | None = None,
     ) -> ClientDetails:
         first_name, last_name = self._validate_name(first_name, last_name)
+        self._validate_dates(birth_date=birth_date, consent_date=consent_date)
         salutation = self._normalize_optional(salutation)
         street = self._normalize_optional(street)
         city = self._normalize_optional(city)
@@ -316,6 +318,16 @@ class ClientService:
         if not first_name or not last_name:
             raise ValidationError("Vor- und Nachname sind Pflichtfelder.")
         return _normalize_casing(first_name), _normalize_casing(last_name)
+
+    @staticmethod
+    def _validate_dates(*, birth_date: date | None, consent_date: date | None) -> None:
+        today = date.today()
+        if birth_date is not None and birth_date > today:
+            raise ValidationError("Das Geburtsdatum liegt in der Zukunft.")
+        if consent_date is not None and consent_date > today:
+            raise ValidationError(
+                "Das Datum der Datenschutz-Einwilligung liegt in der Zukunft."
+            )
 
     @staticmethod
     def _normalize_optional(text: str | None) -> str | None:

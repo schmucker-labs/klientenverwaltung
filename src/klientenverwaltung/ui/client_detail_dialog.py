@@ -1,3 +1,5 @@
+from datetime import date
+
 from PySide6.QtCore import QByteArray, QSettings, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -76,14 +78,18 @@ class ClientDetailDialog(QDialog):
         self._salutation_combo.addItems(_SALUTATION_SUGGESTIONS)
         self._first_name_edit = QLineEdit(self)
         self._last_name_edit = QLineEdit(self)
-        self._birth_date_edit = OptionalDateEdit(self)
+        # Starts decades back, not today - a birth date is typed or picked
+        # from there, not scrolled to year by year.
+        self._birth_date_edit = OptionalDateEdit(
+            self, initial_date=date(date.today().year - 40, 1, 1), not_in_future=True
+        )
         self._street_edit = QLineEdit(self)
         self._postal_code_edit = QLineEdit(self)
         self._city_edit = QLineEdit(self)
         self._phone_edit = QLineEdit(self)
         self._email_edit = QLineEdit(self)
         self._referral_source_edit = QLineEdit(self)
-        self._consent_date_edit = OptionalDateEdit(self)
+        self._consent_date_edit = OptionalDateEdit(self, not_in_future=True)
 
         form = QFormLayout()
         form.addRow("Anrede:", self._salutation_combo)

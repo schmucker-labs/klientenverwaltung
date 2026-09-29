@@ -378,3 +378,17 @@ def test_client_since_date_keeps_same_local_day_when_no_midnight_crossing() -> N
     assert ClientService.client_since_date(
         created_at_utc, local_tz=local_tz
     ) == date(2026, 1, 15)
+
+
+@pytest.mark.parametrize("field", ["birth_date", "consent_date"])
+def test_dates_in_the_future_are_rejected(client_service: ClientService, field: str) -> None:
+    tomorrow = date.today() + timedelta(days=1)
+
+    with pytest.raises(ValidationError, match="Zukunft"):
+        client_service.create_client(first_name="Anna", last_name="Muster", **{field: tomorrow})
+
+    client = client_service.create_client(first_name="Anna", last_name="Muster")
+    with pytest.raises(ValidationError, match="Zukunft"):
+        client_service.update_client(
+            client.id, first_name="Anna", last_name="Muster", **{field: tomorrow}
+        )
