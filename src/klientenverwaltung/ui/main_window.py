@@ -1,12 +1,13 @@
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QActionGroup, QCloseEvent
-from PySide6.QtWidgets import QLabel, QMainWindow, QToolButton
+from PySide6.QtWidgets import QDialog, QLabel, QMainWindow, QToolButton
 
 from klientenverwaltung import AUTHOR, __version__, backup, config
 from klientenverwaltung.app_context import AppServices, OpenDatabase
 from klientenverwaltung.ui.backup_management_dialog import BackupManagementDialog
+from klientenverwaltung.ui.change_password_dialog import ChangePasswordDialog
 from klientenverwaltung.ui.client_list_widget import ClientListWidget
-from klientenverwaltung.ui.dialogs import show_about, show_error
+from klientenverwaltung.ui.dialogs import show_about, show_error, show_info
 from klientenverwaltung.ui.icons import get_icon, load_pixmap
 from klientenverwaltung.ui.media_overview_dialog import MediaOverviewDialog
 from klientenverwaltung.ui.theme import (
@@ -46,6 +47,8 @@ class MainWindow(QMainWindow):
         treatment_types_action.triggered.connect(self._open_treatment_type_dialog)
         media_overview_action = settings_menu.addAction("Medienübersicht…")
         media_overview_action.triggered.connect(self._open_media_overview_dialog)
+        change_password_action = settings_menu.addAction("Passwort ändern…")
+        change_password_action.triggered.connect(self._open_change_password_dialog)
 
         appearance_menu = settings_menu.addMenu("Darstellung")
         appearance_group = QActionGroup(self)
@@ -139,6 +142,19 @@ class MainWindow(QMainWindow):
     def _open_media_overview_dialog(self) -> None:
         dialog = MediaOverviewDialog(self._services.media, parent=self)
         dialog.exec()
+
+    def _open_change_password_dialog(self) -> None:
+        dialog = ChangePasswordDialog(self._database, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            show_info(
+                "Das Passwort wurde geändert. Ab sofort gilt nur noch das neue "
+                "Passwort.\n\nSicherungen von vor der Änderung bleiben mit dem "
+                "bisherigen Passwort verschlüsselt; beim Wiederherstellen einer "
+                "solchen Sicherung fragt das Programm danach.",
+                title="Passwort geändert",
+                parent=self,
+            )
+            self._update_backup_status_label()
 
     def _open_about_dialog(self) -> None:
         show_about(

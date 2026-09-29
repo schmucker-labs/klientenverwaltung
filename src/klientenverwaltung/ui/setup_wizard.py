@@ -1,12 +1,9 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
-    QCheckBox,
     QFileDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -22,27 +19,9 @@ from sqlalchemy import Engine
 from klientenverwaltung import config, crash_log, storage
 from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
+from klientenverwaltung.ui.wrapping_checkbox import WrappingCheckBox
 
 _GEOMETRY_SETTINGS_KEY = "setup_wizard/geometry"
-
-
-class _CheckboxLabel(QLabel):
-    """Word-wrapping label standing in for a checkbox's own text.
-
-    QCheckBox never wraps its text (it clips at the widget edge instead),
-    so the checkbox here carries no text of its own - this label shows it
-    next to the checkbox instead, with a click toggling that checkbox just
-    like clicking the checkbox itself would.
-    """
-
-    def __init__(self, text: str, checkbox: QCheckBox, parent: QWidget | None = None) -> None:
-        super().__init__(text, parent)
-        self._checkbox = checkbox
-        self.setWordWrap(True)
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        self._checkbox.toggle()
-        super().mousePressEvent(event)
 
 
 class _WelcomePage(QWizardPage):
@@ -200,16 +179,11 @@ class _PasswordPage(QWizardPage):
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self._password_repeat_edit = QLineEdit(self)
         self._password_repeat_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self._confirm_checkbox = QCheckBox(self)
-        confirm_label = _CheckboxLabel(
+        self._confirm_checkbox = WrappingCheckBox(
             "Ich habe verstanden: Ohne dieses Passwort sind die Daten "
             "unwiederbringlich verloren.",
-            self._confirm_checkbox,
             self,
         )
-        confirm_row = QHBoxLayout()
-        confirm_row.addWidget(self._confirm_checkbox, 0, Qt.AlignmentFlag.AlignTop)
-        confirm_row.addWidget(confirm_label, 1)
 
         self._error_label = QLabel(self)
         self._error_label.setWordWrap(True)
@@ -225,7 +199,7 @@ class _PasswordPage(QWizardPage):
         layout = QVBoxLayout(self)
         layout.addWidget(warning)
         layout.addLayout(form)
-        layout.addLayout(confirm_row)
+        layout.addWidget(self._confirm_checkbox)
         layout.addWidget(self._error_label)
 
         self._password_edit.textChanged.connect(self._on_changed)
