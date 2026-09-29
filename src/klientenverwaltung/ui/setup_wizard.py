@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy import Engine
 
-from klientenverwaltung import config, crash_log, storage
+from klientenverwaltung import backup, config, crash_log, storage
 from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 from klientenverwaltung.ui.wrapping_checkbox import WrappingCheckBox
@@ -260,10 +260,14 @@ class _BackupFolderPage(QWizardPage):
         choose_button = QPushButton("Ordner wählen…", self)
         choose_button.clicked.connect(self._on_choose_clicked)
 
+        self._warning_label = QLabel(self)
+        self._warning_label.setWordWrap(True)
+
         skip_note = QLabel(
             "Dieser Schritt kann übersprungen werden - Sicherungen sind dann "
-            "zunächst deaktiviert und können jederzeit über Einstellungen → "
-            "Sicherungsordner wählen nachgetragen werden.",
+            "zunächst deaktiviert und können jederzeit über „Sicherung → "
+            "Sicherungen verwalten…“ nachgetragen werden. Bis dahin erinnert das "
+            "Programm einmal pro Woche daran.",
             self,
         )
         skip_note.setWordWrap(True)
@@ -271,13 +275,27 @@ class _BackupFolderPage(QWizardPage):
         layout = QVBoxLayout(self)
         layout.addWidget(self._path_label)
         layout.addWidget(choose_button)
+        layout.addWidget(self._warning_label)
         layout.addWidget(skip_note)
 
     def _on_choose_clicked(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Sicherungsordner wählen")
-        if folder:
-            self._chosen_folder = Path(folder)
-            self._path_label.setText(f"Gewählt: {folder}")
+        if not folder:
+            return
+        self._chosen_folder = Path(folder)
+        self._path_label.setText(f"Gewählt: {folder}")
+        wizard = self.wizard()
+        assert isinstance(wizard, SetupWizard)
+        warning = (
+            backup.backup_folder_warning(self._chosen_folder, wizard.selected_drive)
+            if wizard.selected_drive is not None
+            else None
+        )
+        self._warning_label.setText(
+            f"Achtung: {warning} Sie können trotzdem fortfahren."
+            if warning is not None
+            else ""
+        )
 
     def isComplete(self) -> bool:
         return True

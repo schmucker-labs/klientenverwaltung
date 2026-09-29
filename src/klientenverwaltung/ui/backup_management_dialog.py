@@ -22,6 +22,7 @@ from klientenverwaltung.ui.backup_table_model import COLUMN_TITLES, BackupTableM
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     ask_confirm_restore,
+    ask_use_questionable_backup_folder,
     show_error,
     show_info,
 )
@@ -127,10 +128,19 @@ class BackupManagementDialog(QDialog):
         close_row.addStretch()
         close_row.addWidget(close_button)
 
+        media_note = QLabel(
+            "Hinweis: Sicherungen enthalten die Datenbank (Klienten, Sitzungen, "
+            "Berichte), nicht die Mediendateien im Ordner „medien“ auf der "
+            "Datenplatte. Diese bitte bei Bedarf selbst zusätzlich kopieren.",
+            self,
+        )
+        media_note.setWordWrap(True)
+
         layout = QVBoxLayout(self)
         layout.addLayout(folder_row)
         layout.addWidget(self._folder_error_label)
         layout.addWidget(self._table_view)
+        layout.addWidget(media_note)
         layout.addLayout(button_row)
         layout.addLayout(close_row)
 
@@ -183,6 +193,9 @@ class BackupManagementDialog(QDialog):
         self._apply_folder(Path(text))
 
     def _apply_folder(self, path: Path) -> None:
+        # editingFinished also fires when focus merely leaves the field.
+        if path == config.get_backup_folder_path():
+            return
         if not path.exists() or not path.is_dir():
             self._reject_folder(f"Der Ordner existiert nicht: {path}")
             return
@@ -190,6 +203,12 @@ class BackupManagementDialog(QDialog):
             self._reject_folder(
                 f"In diesen Ordner kann nicht geschrieben werden: {path}"
             )
+            return
+        warning = backup.backup_folder_warning(path, self._drive_root)
+        if warning is not None and not ask_use_questionable_backup_folder(
+            warning, parent=self
+        ):
+            self._reject_folder("")
             return
         self._folder_error_label.setText("")
         config.set_backup_folder_path(path)

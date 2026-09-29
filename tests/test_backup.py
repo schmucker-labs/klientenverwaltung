@@ -371,3 +371,53 @@ class TestParseBackupTimestamp:
         assert backup.parse_backup_timestamp(second_in_same_second) == datetime(
             2026, 1, 1, 12, 0, 0
         )
+
+
+class TestBackUpIfChanged:
+    def test_backs_up_a_database_changed_since_the_last_backup(
+        self, engine: Engine, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "backups"
+        db_path = tmp_path / "drive" / storage.DB_FILENAME
+        long_ago = datetime.now() - timedelta(days=1)
+        backup.create_backup(engine, folder, now=long_ago)
+
+        created = backup.back_up_if_changed(engine, db_path, folder)
+
+        assert created is not None
+        assert len(backup.list_backups(folder)) == 2
+
+    def test_skips_a_database_unchanged_since_the_last_backup(
+        self, engine: Engine, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "backups"
+        db_path = tmp_path / "drive" / storage.DB_FILENAME
+        backup.create_backup(engine, folder, now=datetime.now() + timedelta(minutes=1))
+
+        assert backup.back_up_if_changed(engine, db_path, folder) is None
+        assert len(backup.list_backups(folder)) == 1
+
+
+class TestBackupFolderWarning:
+    def test_warns_about_a_folder_on_the_data_drive_itself(self, tmp_path: Path) -> None:
+        warning = backup.backup_folder_warning(tmp_path / "Sicherungen", tmp_path / "drive")
+
+        assert warning is not None
+        assert "Datenplatte" in warning
+
+    @pytest.mark.parametrize(
+        "folder",
+        [
+            Path("D:/Benutzer/Anna/OneDrive/Sicherungen"),
+            Path("D:/Benutzer/Anna/OneDrive - Praxis/Sicherungen"),
+            Path("D:/Dropbox/Klienten"),
+        ],
+    )
+    def test_warns_about_a_cloud_synced_folder(self, folder: Path) -> None:
+        warning = backup.backup_folder_warning(folder, Path("E:/"))
+
+        assert warning is not None
+        assert "Cloud" in warning
+
+    def test_no_warning_for_a_folder_on_another_local_drive(self) -> None:
+        assert backup.backup_folder_warning(Path("D:/Sicherungen"), Path("E:/")) is None

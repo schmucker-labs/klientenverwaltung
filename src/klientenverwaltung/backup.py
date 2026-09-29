@@ -224,6 +224,44 @@ def is_database_unchanged_since_backup(db_path: Path, last_backup: Path | None) 
     return db_modified_time.replace(microsecond=0) <= last_backup_time
 
 
+def back_up_if_changed(engine: Engine, db_path: Path, folder: Path) -> Path | None:
+    """Backs up into folder unless folder's newest backup already holds the
+    database's current state. Returns the new backup, or None if skipped.
+
+    Only folder's own backups count: a copy elsewhere (e.g. the fallback
+    on the data drive itself) does not protect against losing that drive.
+    """
+    if is_database_unchanged_since_backup(db_path, most_recent_backup([folder])):
+        return None
+    return create_backup(engine, folder)
+
+
+_CLOUD_SYNC_FOLDER_PREFIXES = ("onedrive", "dropbox", "google drive", "icloud")
+
+
+def backup_folder_warning(folder: Path, drive_root: Path) -> str | None:
+    """A German warning if folder is a questionable place for backups, else None."""
+    if folder.drive and folder.drive.casefold() == drive_root.drive.casefold():
+        return (
+            "Dieser Ordner liegt auf der Datenplatte selbst. Geht die Platte "
+            "verloren oder kaputt, sind Daten und Sicherungen zugleich weg. Besser "
+            "einen Ordner auf einem anderen Datenträger wählen, zum Beispiel einer "
+            "zweiten Festplatte."
+        )
+    if any(
+        part.casefold().startswith(prefix)
+        for part in folder.parts
+        for prefix in _CLOUD_SYNC_FOLDER_PREFIXES
+    ):
+        return (
+            "Dieser Ordner wird offenbar mit einem Cloud-Dienst synchronisiert. Die "
+            "Sicherungen sind zwar verschlüsselt, lägen dann aber zusätzlich bei "
+            "einem fremden Anbieter - bei Gesundheitsdaten (DSGVO) nur nach "
+            "sorgfältiger Prüfung."
+        )
+    return None
+
+
 def is_writable_directory(path: Path) -> bool:
     """True if path exists, is a directory, and a file can actually be
     written into it (existence/is_dir alone doesn't catch read-only shares

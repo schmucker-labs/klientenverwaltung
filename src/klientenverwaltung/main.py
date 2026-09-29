@@ -30,6 +30,8 @@ from klientenverwaltung.ui.theme import apply_theme_mode, load_theme_mode
 _SPLASH_FADE_IN_MS = 700
 _SPLASH_HOLD_MS = 400
 _SPLASH_FADE_OUT_MS = 300
+# After the splash has faded out, so the reminder never pops up behind it.
+_BACKUP_REMINDER_DELAY_MS = 800
 
 
 def _open_database_or_none(db_path: Path) -> Engine | None:
@@ -106,16 +108,15 @@ def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
     not even onto the data drive itself - except when a migration is
     about to run, which always forces a backup regardless (see below).
     MainWindow's status bar tells the user backups aren't set up in this
-    case; a dialog does not interrupt every single startup for it.
+    case, and a reminder appears at most once a week.
 
-    With a backup folder configured, the drive itself is used only as a
-    fallback for when that folder is unreachable right now - and always
-    before a migration regardless of reachability, per "vor Migrationen
-    wird weiterhin immer gesichert".
-
-    Skipped entirely (in either case) when the database hasn't changed
-    since the last backup and no migration is pending - running it anyway
-    would just create an identical copy.
+    With a backup folder configured, the database is backed up there
+    unless that folder's own newest backup already holds the current
+    state - a newer fallback copy on the data drive does not count, it
+    would be lost together with the drive. The drive itself is used only
+    as a fallback for when the folder is unreachable right now - and
+    always before a migration regardless, per "vor Migrationen wird
+    weiterhin immer gesichert".
 
     Returns True if the database is adequately protected (a fresh backup
     was just made, or none was needed); False if one was needed but could
@@ -124,6 +125,7 @@ def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
     """
     configured_folder = config.get_backup_folder_path()
     migration_pending = storage.has_pending_migrations(engine)
+    db_path = drive_root / storage.DB_FILENAME
 
     if configured_folder is None:
         if not migration_pending:
@@ -134,23 +136,42 @@ def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
         except backup.BackupError:
             return False
 
-    last_backup = backup.most_recent_backup([drive_root, configured_folder])
-    db_path = drive_root / storage.DB_FILENAME
-    if not migration_pending and backup.is_database_unchanged_since_backup(
-        db_path, last_backup
-    ):
-        return True
-
     try:
-        backup.create_backup(engine, configured_folder)
+        if migration_pending:
+            backup.create_backup(engine, configured_folder)
+        else:
+            backup.back_up_if_changed(engine, db_path, configured_folder)
         return True
     except backup.BackupError:
         pass
+    # The folder is unreachable right now: the data drive is the fallback.
+    if not migration_pending and backup.is_database_unchanged_since_backup(
+        db_path, backup.most_recent_backup([drive_root])
+    ):
+        return True
     try:
         backup.create_backup(engine, drive_root)
         return True
     except backup.BackupError:
         return False
+
+
+def _run_shutdown_backup(database: OpenDatabase) -> None:
+    """Backs up the day's work when the program closes.
+
+    Without this, everything documented since the last start would exist
+    only on the data drive until the next start's backup - the one medium
+    that is carried around daily. Silent: the program is already closing,
+    and a failure (folder unreachable, drive unplugged) is simply caught up
+    on by the next start's backup.
+    """
+    folder = config.get_backup_folder_path()
+    if database.closed or folder is None:
+        return
+    try:
+        backup.back_up_if_changed(database.engine, database.db_path, folder)
+    except backup.BackupError:
+        pass
 
 
 def _prepare_database(engine: Engine, drive_root: Path) -> bool:
@@ -237,9 +258,19 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
         return
     drive_root, engine = acquired
     database = OpenDatabase(engine, drive_root)
-    # database.close, not engine.dispose: after a password change the
-    # engine in use is a different one than the one opened here.
-    app.aboutToQuit.connect(database.close)
+    started = False
+
+    def _on_about_to_quit() -> None:
+        # Only after a complete start: a database whose startup failed
+        # (e.g. a half-applied migration) must not push good backups out
+        # of the rotation.
+        if started:
+            _run_shutdown_backup(database)
+        # database.close, not engine.dispose: after a password change the
+        # engine in use is a different one than the one opened here.
+        database.close()
+
+    app.aboutToQuit.connect(_on_about_to_quit)
 
     if not _prepare_database(engine, drive_root):
         splash.close()
@@ -251,7 +282,9 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
 
     window = MainWindow(services, database)
     window.show()
+    started = True
     _fade_out_splash(splash)
+    QTimer.singleShot(_BACKUP_REMINDER_DELAY_MS, window.remind_about_backups_if_due)
 
 
 def _log_and_show_crash(

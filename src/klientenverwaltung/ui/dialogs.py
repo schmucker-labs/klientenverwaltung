@@ -164,6 +164,43 @@ def ask_confirm_restore(
     return box.clickedButton() is restore_button
 
 
+def ask_set_up_backup_folder(*, parent: QWidget | None = None) -> bool:
+    """The (at most weekly) reminder while no backup folder is set up;
+    True for "Jetzt einrichten…"."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Keine Sicherungen eingerichtet")
+    box.setText(
+        "Es ist noch kein Sicherungsordner eingerichtet. Ihre Daten liegen damit "
+        "nur auf der Datenplatte - geht sie verloren oder kaputt, sind alle Daten "
+        "weg.\n\nBitte einen Sicherungsordner auf einem anderen Datenträger "
+        "wählen, zum Beispiel auf einer zweiten Festplatte."
+    )
+    set_up_button = box.addButton("Jetzt einrichten…", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton("Später", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(set_up_button)
+    box.exec()
+    return box.clickedButton() is set_up_button
+
+
+def ask_use_questionable_backup_folder(
+    warning: str, *, parent: QWidget | None = None
+) -> bool:
+    """Shows backup.backup_folder_warning()'s text; defaults to choosing
+    another folder. True for "Trotzdem verwenden"."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Sicherungsordner prüfen")
+    box.setText(warning)
+    use_button = box.addButton("Trotzdem verwenden", QMessageBox.ButtonRole.AcceptRole)
+    other_button = box.addButton(
+        "Anderen Ordner wählen", QMessageBox.ButtonRole.RejectRole
+    )
+    box.setDefaultButton(other_button)
+    box.exec()
+    return box.clickedButton() is use_button
+
+
 def ask_use_existing_file(
     original_filename: str, *, parent: QWidget | None = None
 ) -> bool:

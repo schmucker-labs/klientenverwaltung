@@ -1,4 +1,7 @@
-from PySide6.QtCore import QSize, Qt
+from datetime import date, timedelta
+from pathlib import Path
+
+from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtGui import QActionGroup, QCloseEvent
 from PySide6.QtWidgets import QDialog, QLabel, QMainWindow, QToolButton
 
@@ -7,7 +10,12 @@ from klientenverwaltung.app_context import AppServices, OpenDatabase
 from klientenverwaltung.ui.backup_management_dialog import BackupManagementDialog
 from klientenverwaltung.ui.change_password_dialog import ChangePasswordDialog
 from klientenverwaltung.ui.client_list_widget import ClientListWidget
-from klientenverwaltung.ui.dialogs import show_about, show_error, show_info
+from klientenverwaltung.ui.dialogs import (
+    ask_set_up_backup_folder,
+    show_about,
+    show_error,
+    show_info,
+)
 from klientenverwaltung.ui.icons import get_icon, load_pixmap
 from klientenverwaltung.ui.media_overview_dialog import MediaOverviewDialog
 from klientenverwaltung.ui.theme import (
@@ -24,6 +32,13 @@ from klientenverwaltung.ui.window_settings import restore_geometry, save_geometr
 
 _GEOMETRY_SETTINGS_KEY = "main_window/geometry"
 _THEME_ICON_SIZE = 20
+_BACKUP_REMINDER_SETTINGS_KEY = "backup/reminder_last_shown"
+_BACKUP_REMINDER_INTERVAL = timedelta(days=7)
+
+
+def _format_backup_time(path: Path) -> str:
+    timestamp = backup.parse_backup_timestamp(path)
+    return timestamp.strftime("%d.%m.%Y %H:%M") if timestamp else "unbekannt"
 
 
 class MainWindow(QMainWindow):
@@ -117,21 +132,44 @@ class MainWindow(QMainWindow):
         )
 
     def _update_backup_status_label(self) -> None:
+        """Counts only backups in the configured folder: a copy on the data
+        drive itself would be lost together with the drive, so it must not
+        look like a real backup here."""
         configured = config.get_backup_folder_path()
         if configured is None:
-            self._backup_status_label.setText("Keine Sicherungen eingerichtet")
+            on_drive = backup.most_recent_backup([self._database.drive_root])
+            self._backup_status_label.setText(
+                "Keine Sicherungen eingerichtet"
+                if on_drive is None
+                else f"Keine Sicherungen eingerichtet - Kopie nur auf der "
+                f"Datenplatte: {_format_backup_time(on_drive)}"
+            )
             return
-        latest = backup.most_recent_backup([self._database.drive_root, configured])
-        if latest is None:
-            self._backup_status_label.setText("Letzte Sicherung: keine vorhanden")
-            return
-        timestamp = backup.parse_backup_timestamp(latest)
-        if timestamp is None:
-            self._backup_status_label.setText("Letzte Sicherung: unbekannt")
-            return
+        latest = backup.most_recent_backup([configured])
         self._backup_status_label.setText(
-            f"Letzte Sicherung: {timestamp.strftime('%d.%m.%Y %H:%M')}"
+            "Letzte Sicherung: keine vorhanden"
+            if latest is None
+            else f"Letzte Sicherung: {_format_backup_time(latest)}"
         )
+
+    def remind_about_backups_if_due(self) -> None:
+        """At most once a week while no backup folder is set up - backups
+        then only happen right before migrations, and a status-bar line is
+        easy to overlook."""
+        if config.get_backup_folder_path() is not None:
+            return
+        settings = QSettings()
+        today = date.today()
+        last_shown = settings.value(_BACKUP_REMINDER_SETTINGS_KEY)
+        if isinstance(last_shown, str):
+            try:
+                if today - date.fromisoformat(last_shown) < _BACKUP_REMINDER_INTERVAL:
+                    return
+            except ValueError:
+                pass
+        settings.setValue(_BACKUP_REMINDER_SETTINGS_KEY, today.isoformat())
+        if ask_set_up_backup_folder(parent=self):
+            self._on_manage_backups_clicked()
 
     def _open_treatment_type_dialog(self) -> None:
         dialog = TreatmentTypeManagementDialog(
@@ -166,13 +204,29 @@ class MainWindow(QMainWindow):
         )
 
     def _on_backup_now_clicked(self) -> None:
-        folder = config.get_backup_folder_path() or self._database.drive_root
+        configured = config.get_backup_folder_path()
+        folder = configured or self._database.drive_root
         try:
-            backup.create_backup(self._database.engine, folder)
+            created = backup.create_backup(self._database.engine, folder)
         except backup.BackupError as exc:
             show_error(str(exc), parent=self)
             return
         self._update_backup_status_label()
+        if configured is None:
+            show_info(
+                f"Die Sicherung wurde auf der Datenplatte abgelegt:\n{created}\n\n"
+                "Sie schützt damit nicht vor dem Verlust oder Defekt der "
+                "Datenplatte. Bitte unter „Sicherung → Sicherungen verwalten…“ "
+                "einen Sicherungsordner auf einem anderen Datenträger wählen.",
+                title="Sicherung erstellt",
+                parent=self,
+            )
+        else:
+            show_info(
+                f"Die Sicherung wurde erstellt:\n{created}",
+                title="Sicherung erstellt",
+                parent=self,
+            )
 
     def _on_manage_backups_clicked(self) -> None:
         dialog = BackupManagementDialog(self._database, parent=self)
