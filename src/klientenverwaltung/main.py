@@ -59,30 +59,45 @@ def _run_setup_wizard() -> tuple[Path, Engine] | None:
 
 def _acquire_drive_and_engine() -> tuple[Path, Engine] | None:
     """Finds an existing, already set-up drive and logs in, or - if none is
-    found - offers to run the first-run setup wizard on a fresh drive.
+    found, or only the leftover of an interrupted setup - offers to run the
+    setup wizard.
     """
     while True:
         try:
             drive_root = storage.find_data_drive()
         except storage.DataDriveNotFoundError as exc:
             choice = ask_retry_or_setup(str(exc), title="Datenplatte nicht gefunden")
-            if choice == "retry":
-                continue
-            if choice == "setup":
-                setup_result = _run_setup_wizard()
-                if setup_result is not None:
-                    return setup_result
-                continue
-            return None
         except storage.MultipleDataDrivesFoundError as exc:
             if not ask_retry(str(exc), title="Mehrere Datenplatten gefunden"):
                 return None
             continue
+        else:
+            if storage.drive_setup_state(drive_root) is not (
+                storage.DriveSetupState.INCOMPLETE
+            ):
+                break
+            choice = ask_retry_or_setup(
+                f"Auf dem Laufwerk {drive_root} wurde eine unvollständig "
+                "eingerichtete Datenplatte gefunden: Die Kennungsdatei ist "
+                "vorhanden, die Datenbank fehlt. Vermutlich wurde die Einrichtung "
+                "abgebrochen. Sie kann jetzt mit „Neue Datenplatte einrichten…“ "
+                "abgeschlossen werden (dabei dieses Laufwerk wählen).",
+                title="Einrichtung unvollständig",
+            )
 
-        engine = _open_database_or_none(drive_root / storage.DB_FILENAME)
-        if engine is None:
-            return None
-        return drive_root, engine
+        if choice == "retry":
+            continue
+        if choice == "setup":
+            setup_result = _run_setup_wizard()
+            if setup_result is not None:
+                return setup_result
+            continue
+        return None
+
+    engine = _open_database_or_none(drive_root / storage.DB_FILENAME)
+    if engine is None:
+        return None
+    return drive_root, engine
 
 
 def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:

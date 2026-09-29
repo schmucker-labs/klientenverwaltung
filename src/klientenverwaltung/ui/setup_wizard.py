@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy import Engine
 
-from klientenverwaltung import config, storage
+from klientenverwaltung import config, crash_log, storage
 from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _GEOMETRY_SETTINGS_KEY = "setup_wizard/geometry"
+_SETUP_STATE_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class _CheckboxLabel(QLabel):
@@ -89,6 +90,9 @@ class _DrivePage(QWizardPage):
         for drive in storage.list_available_drives():
             item = QListWidgetItem(storage.describe_drive(drive))
             item.setData(Qt.ItemDataRole.UserRole, drive)
+            # Read once here, not on every isComplete()/selection change:
+            # each check touches the drive, which can be slow.
+            item.setData(_SETUP_STATE_ROLE, storage.drive_setup_state(drive))
             self._drive_list.addItem(item)
         self._update_warning()
 
@@ -100,6 +104,10 @@ class _DrivePage(QWizardPage):
         item = self._drive_list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 
+    def _selected_setup_state(self) -> storage.DriveSetupState | None:
+        item = self._drive_list.currentItem()
+        return item.data(_SETUP_STATE_ROLE) if item is not None else None
+
     def _selected_drive_display(self) -> str | None:
         """The exact text shown for the selected drive in the list above -
         the summary page reads this same string, rather than recomputing
@@ -109,13 +117,27 @@ class _DrivePage(QWizardPage):
 
     def _update_warning(self) -> None:
         drive = self._selected_drive()
+        state = self._selected_setup_state()
         if drive is None:
             self._warning_label.setVisible(False)
             return
-        if storage.drive_already_set_up(drive):
+        if state is storage.DriveSetupState.SET_UP:
             self._warning_label.setText(
                 f"Dieses Laufwerk ({drive}) ist bereits als Datenplatte "
                 "eingerichtet. Bitte ein anderes Laufwerk wählen."
+            )
+            self._warning_label.setVisible(True)
+        elif state is storage.DriveSetupState.FOREIGN_DATABASE:
+            self._warning_label.setText(
+                f"Auf diesem Laufwerk ({drive}) liegt bereits eine Datenbankdatei "
+                f"({storage.DB_FILENAME}). Sie wird nie überschrieben - bitte ein "
+                "anderes Laufwerk wählen."
+            )
+            self._warning_label.setVisible(True)
+        elif state is storage.DriveSetupState.INCOMPLETE:
+            self._warning_label.setText(
+                f"Auf diesem Laufwerk ({drive}) wurde eine abgebrochene Einrichtung "
+                "gefunden. Sie wird mit den folgenden Schritten abgeschlossen."
             )
             self._warning_label.setVisible(True)
         elif not storage.is_removable_drive(drive):
@@ -131,8 +153,10 @@ class _DrivePage(QWizardPage):
             self._warning_label.setVisible(False)
 
     def isComplete(self) -> bool:
-        drive = self._selected_drive()
-        return drive is not None and not storage.drive_already_set_up(drive)
+        return self._selected_setup_state() in (
+            storage.DriveSetupState.FREE,
+            storage.DriveSetupState.INCOMPLETE,
+        )
 
     def validatePage(self) -> bool:
         wizard = self.wizard()
@@ -305,9 +329,9 @@ class _SummaryPage(QWizardPage):
             f"Datenplatte: {wizard.selected_drive_display}\n"
             "Passwort: festgelegt\n"
             f"{backup_line}\n\n"
-            'Mit "Fertig stellen" werden jetzt die Kennungsdatei, die '
-            "verschlüsselte Datenbank und die Standard-Behandlungsarten "
-            "angelegt."
+            "Mit „Fertig stellen“ werden jetzt die verschlüsselte Datenbank und "
+            "die Kennungsdatei angelegt. Ihre Behandlungsarten legen Sie danach "
+            "unter „Einstellungen → Behandlungsarten verwalten…“ an."
         )
 
     def validatePage(self) -> bool:
@@ -320,6 +344,17 @@ class _SummaryPage(QWizardPage):
             )
         except storage.StorageError as exc:
             show_error(str(exc), parent=self)
+            return False
+        except Exception as exc:  # noqa: BLE001 - anything else must not end the app
+            # set_up_data_drive() has already removed everything it created,
+            # so the drive can simply be set up again.
+            log_path = crash_log.write_crash_log(exc, exc.__traceback__)
+            show_error(
+                "Die Datenplatte konnte nicht eingerichtet werden. Auf dem "
+                "Laufwerk wurde nichts verändert.\n\nTechnische Details wurden "
+                f"gespeichert in:\n{log_path}",
+                parent=self,
+            )
             return False
         if wizard.chosen_backup_folder is not None:
             config.set_backup_folder_path(wizard.chosen_backup_folder)

@@ -127,13 +127,64 @@ class TestSetUpDataDrive:
         with pytest.raises(storage.WeakPasswordError):
             storage.set_up_data_drive(drive, "zu-kurz")
 
-    def test_refuses_to_overwrite_existing_identifier_file(
+    def test_refuses_a_drive_that_is_already_fully_set_up(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort").dispose()
+
+        with pytest.raises(storage.StorageError):
+            storage.set_up_data_drive(drive, "ein-anderes-passwort-123")
+
+    def test_completes_an_interrupted_setup_with_identifier_but_no_database(
         self, tmp_path: Path
     ) -> None:
         drive = _make_drive_with_identifier(tmp_path / "drive")
 
+        engine = storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+        engine.dispose()
+
+        assert storage.drive_already_set_up(drive) is True
+
+    def test_writes_no_identifier_file_when_setup_fails_unexpectedly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Any failure - not just a StorageError - must leave the drive as if
+        setup never ran; otherwise the next start finds an identifier
+        without a database and the wizard refuses the drive."""
+        drive = tmp_path / "drive"
+        drive.mkdir()
+
+        def _crashing_apply_migrations(_engine: object) -> None:
+            raise ModuleNotFoundError("No module named 'logging.config'")
+
+        monkeypatch.setattr(storage, "apply_migrations", _crashing_apply_migrations)
+
+        with pytest.raises(ModuleNotFoundError):
+            storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+
+        assert not (drive / storage.IDENTIFIER_FILENAME).exists()
+        assert not (drive / storage.DB_FILENAME).exists()
+
+    def test_keeps_a_pre_existing_identifier_when_completing_setup_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        drive = _make_drive_with_identifier(tmp_path / "drive")
+        identifier_before = (drive / storage.IDENTIFIER_FILENAME).read_text(
+            encoding="utf-8"
+        )
+
+        def _failing_apply_migrations(_engine: object) -> None:
+            raise storage.StorageError("Migration ist fehlgeschlagen.")
+
+        monkeypatch.setattr(storage, "apply_migrations", _failing_apply_migrations)
+
         with pytest.raises(storage.StorageError):
             storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+
+        assert (drive / storage.IDENTIFIER_FILENAME).read_text(
+            encoding="utf-8"
+        ) == identifier_before
+        assert not (drive / storage.DB_FILENAME).exists()
 
     def test_refuses_to_overwrite_existing_database_file(self, tmp_path: Path) -> None:
         drive = tmp_path / "drive"
@@ -189,9 +240,16 @@ class TestHasPendingMigrations:
 
 
 class TestDriveAlreadySetUp:
-    def test_true_when_identifier_file_present(self, tmp_path: Path) -> None:
+    def test_true_when_identifier_and_database_present(self, tmp_path: Path) -> None:
         drive = _make_drive_with_identifier(tmp_path / "drive")
+        (drive / storage.DB_FILENAME).write_bytes(b"")
         assert storage.drive_already_set_up(drive) is True
+
+    def test_false_for_an_interrupted_setup_without_database(
+        self, tmp_path: Path
+    ) -> None:
+        drive = _make_drive_with_identifier(tmp_path / "drive")
+        assert storage.drive_already_set_up(drive) is False
 
     def test_false_when_no_identifier_file(self, tmp_path: Path) -> None:
         drive = tmp_path / "drive"

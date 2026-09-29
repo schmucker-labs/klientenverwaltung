@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import contextmanager
+from enum import StrEnum
 from pathlib import Path
 
 # SQLAlchemy resolves the "pysqlcipher" dialect by string name at runtime, so
@@ -240,7 +241,18 @@ def open_database(db_path: Path, password: str) -> Engine:
 
 
 def set_up_data_drive(drive_root: Path, password: str) -> Engine:
-    """Einrichtungsfunktion: identifier file, encrypted DB (via Alembic).
+    """Einrichtungsfunktion: encrypted DB (via Alembic), then identifier file.
+
+    The identifier file is written last, only once the database is fully
+    migrated - a drive only counts as set up (and is only ever found by
+    find_data_drive()) when everything on it is complete. Any failure,
+    whatever its type, removes what this call created, so the drive looks
+    exactly as if setup never ran and can simply be set up again.
+
+    A drive carrying an identifier file but no database is the leftover of
+    an interrupted setup (by an older version, or a crash/power loss right
+    in between): it is completed here, not refused. A drive that already
+    holds a database is always refused - never overwrite data.
 
     No treatment types are created here - the user creates their own,
     per Auftrag D1 ("Keine Standard-Behandlungsarten mehr").
@@ -251,32 +263,33 @@ def set_up_data_drive(drive_root: Path, password: str) -> Engine:
         )
 
     identifier_path = drive_root / IDENTIFIER_FILENAME
-    if identifier_path.exists():
-        raise StorageError(
-            f"Auf diesem Laufwerk existiert bereits eine Kennungsdatei: {identifier_path}"
-        )
-
     db_path = drive_root / DB_FILENAME
     if db_path.exists():
         raise StorageError(
             f"Auf diesem Laufwerk existiert bereits eine Datenbankdatei: {db_path}"
         )
 
-    identifier_path.write_text(str(uuid.uuid4()), encoding="utf-8")
-
     engine = create_encrypted_engine(db_path, password)
     try:
         apply_migrations(engine)
-    except StorageError:
-        # Never leave a half-set-up drive behind: a failure here must look,
-        # from the outside, exactly like set_up_data_drive() was never
-        # called.
+        identifier_path.write_text(str(uuid.uuid4()), encoding="utf-8")
+    except BaseException as exc:
         engine.dispose()
-        identifier_path.unlink(missing_ok=True)
         db_path.unlink(missing_ok=True)
+        db_path.with_name(db_path.name + "-journal").unlink(missing_ok=True)
+        # identifier_path is written last, so if we got here it is either
+        # untouched (a leftover from an interrupted setup, kept as it was)
+        # or absent - never half-written by this call.
+        if isinstance(exc, OSError):
+            raise StorageError(
+                f"Auf dem Laufwerk {drive_root} kann nicht geschrieben werden."
+            ) from exc
         raise
 
-    config.set_last_known_drive_path(drive_root)
+    try:
+        config.set_last_known_drive_path(drive_root)
+    except OSError:
+        pass  # only a search shortcut for the next start, not essential
     return engine
 
 
@@ -327,9 +340,32 @@ def is_removable_drive(drive_root: Path) -> bool:
     return ctypes.windll.kernel32.GetDriveTypeW(root) == drive_removable  # type: ignore[attr-defined]
 
 
+class DriveSetupState(StrEnum):
+    FREE = "free"
+    """Neither identifier file nor database - can be set up."""
+    INCOMPLETE = "incomplete"
+    """Identifier file but no database: an interrupted setup, completable."""
+    SET_UP = "set_up"
+    """A complete data drive."""
+    FOREIGN_DATABASE = "foreign_database"
+    """A database file without identifier file - never overwritten."""
+
+
+def drive_setup_state(drive_root: Path) -> DriveSetupState:
+    has_identifier = _read_identifier_file(drive_root) is not None
+    has_database = (drive_root / DB_FILENAME).exists()
+    if has_identifier and has_database:
+        return DriveSetupState.SET_UP
+    if has_identifier:
+        return DriveSetupState.INCOMPLETE
+    if has_database:
+        return DriveSetupState.FOREIGN_DATABASE
+    return DriveSetupState.FREE
+
+
 def drive_already_set_up(drive_root: Path) -> bool:
-    """True if drive_root already carries a valid Kennungsdatei."""
-    return _read_identifier_file(drive_root) is not None
+    """True if drive_root carries a valid Kennungsdatei *and* a database."""
+    return drive_setup_state(drive_root) is DriveSetupState.SET_UP
 
 
 @contextmanager
