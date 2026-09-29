@@ -13,7 +13,7 @@ import sqlalchemy.dialects.sqlite.pysqlcipher  # noqa: F401
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Connection, Engine, create_engine, event
+from sqlalchemy import URL, Connection, Engine, create_engine, event
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 from alembic import command
@@ -54,8 +54,21 @@ class WeakPasswordError(StorageError):
 
 
 def create_encrypted_engine(db_path: Path, password: str) -> Engine:
-    url = f"sqlite+pysqlcipher://:{password}@/{db_path.as_posix()}"
-    engine = create_engine(url)
+    """An engine for the SQLCipher database at db_path, keyed with password.
+
+    The URL is built with URL.create() rather than as a string: a string
+    URL is parsed by SQLAlchemy, which cuts the password off at the first
+    "@" and percent-decodes "%XX" sequences - so a perfectly valid password
+    would either crash engine creation or silently become a different key.
+
+    hide_parameters keeps bound SQL parameters (client data) out of every
+    exception message, which may otherwise end up in the crash log on the
+    laptop.
+    """
+    url = URL.create(
+        "sqlite+pysqlcipher", password=password, database=db_path.as_posix()
+    )
+    engine = create_engine(url, hide_parameters=True)
 
     @event.listens_for(engine, "connect")
     def _set_pragmas(dbapi_connection, _connection_record) -> None:

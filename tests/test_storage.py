@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from klientenverwaltung import storage
 
@@ -233,6 +234,56 @@ class TestOpenDatabase:
             storage.open_database(
                 drive / storage.DB_FILENAME, "ein-sehr-sicheres-passwort"
             )
+
+    @pytest.mark.parametrize(
+        "password",
+        [
+            "Sommer@Wiese2026",
+            "a:b@c:d@e12345678",
+            "Sommer%41Wiese2026",
+            'mit"Anführungs\'zeichen',
+            "mein?pass#wort/12:",
+            "Grüße-aus-Köln-ß",
+        ],
+    )
+    def test_password_with_special_characters_is_used_verbatim(
+        self, tmp_path: Path, password: str
+    ) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, password).dispose()
+
+        engine = storage.open_database(drive / storage.DB_FILENAME, password)
+        engine.dispose()
+
+    def test_percent_escape_in_password_is_not_url_decoded(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "Sommer%41Wiese2026").dispose()
+
+        with pytest.raises(storage.IncorrectPasswordError):
+            storage.open_database(drive / storage.DB_FILENAME, "SommerAWiese2026")
+
+    def test_database_errors_never_carry_statement_parameters(
+        self, tmp_path: Path
+    ) -> None:
+        """Parameters can be client data - they must never end up in an
+        exception message, which may reach the crash log on the laptop."""
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        engine = storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+        try:
+            with pytest.raises(DBAPIError) as exc_info, engine.connect() as connection:
+                connection.execute(
+                    text(
+                        "INSERT INTO client (first_name, last_name, archived) "
+                        "VALUES (:first_name, NULL, 0)"
+                    ),
+                    {"first_name": "Anna Geheimname"},
+                )
+            assert "Geheimname" not in str(exc_info.value)
+        finally:
+            engine.dispose()
 
     def test_connection_loss_during_operation_raises_specific_error(
         self, tmp_path: Path
