@@ -2,9 +2,11 @@ import os
 from logging.config import fileConfig
 from pathlib import Path
 
+from sqlalchemy import Connection
+
 from alembic import context
 from klientenverwaltung.models import Base
-from klientenverwaltung.storage import create_encrypted_engine
+from klientenverwaltung.storage import create_encrypted_engine, foreign_keys_disabled
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -63,20 +65,22 @@ def run_migrations_online() -> None:
     if connection is not None:
         # Provided by the application at startup: an already-open,
         # encrypted connection to the database on the USB-Datenplatte.
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=True,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+        _run_with_foreign_keys_disabled(connection)
         return
 
     db_path, password = _dev_db_path_and_password()
     connectable = create_encrypted_engine(db_path, password)
     with connectable.connect() as dev_connection:
+        _run_with_foreign_keys_disabled(dev_connection)
+
+
+def _run_with_foreign_keys_disabled(connection: Connection) -> None:
+    # Never run a migration with foreign keys enforced: batch mode's
+    # DROP TABLE would cascade into every child table (see
+    # storage.foreign_keys_disabled).
+    with foreign_keys_disabled(connection):
         context.configure(
-            connection=dev_connection,
+            connection=connection,
             target_metadata=target_metadata,
             render_as_batch=True,
         )

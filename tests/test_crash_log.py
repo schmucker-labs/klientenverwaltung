@@ -12,9 +12,10 @@ def _isolated_appdata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
 
 
-# Built at runtime like real client data - a literal would show up in the
-# traceback's source lines, which are (deliberately) still logged as code.
-_SECRET = "".join(["Geheim", "name"])
+# Only ever passed around as a value, like real client data: a literal
+# inside one of the raising functions would show up in the traceback's
+# source lines, which are (deliberately) still logged as program code.
+_SECRET = "Geheimname"
 
 
 def _raise_integrity_error_with_client_data(secret: str) -> None:

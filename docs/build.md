@@ -14,6 +14,15 @@ Alembic-Migration hinzukommt.
   ausdrücklich in HIDDEN_IMPORTS stehen (z. B. logging.config), sonst fehlt es nur im
   Build ohne Python-Installation. Bei jeder neuen Migration prüfen, ob sie neue Imports
   mitbringt.
+- Migrationen laufen immer mit abgeschalteter Fremdschlüsselprüfung
+  (`storage.foreign_keys_disabled`, genutzt von `alembic/env.py`) und werden danach per
+  `PRAGMA foreign_key_check` geprüft. Grund: SQLites Batch-Modus baut Tabellen per
+  `DROP TABLE` neu auf, und mit aktiven Fremdschlüsseln kaskadiert dieses `DROP` in alle
+  Kindtabellen (Neuaufbau von `client` löschte alle Sitzungen). Nie eine Migration an
+  diesem Mechanismus vorbei ausführen. Beim Neuaufbau einer Tabelle die Spalten und
+  Constraints per `copy_from` ausschreiben (siehe `71b6a09c0da8`) - SQLites Reflection
+  verliert `ON DELETE`-Klauseln. `tests/test_migrations.py` prüft, dass Migrationen und
+  Modelle übereinstimmen.
 - Es werden immer zwei Builds erzeugt: Release ohne Konsole und eine Debug-Variante mit
   Konsole für die Fehlersuche beim Anwender.
 - Die Anwendung lädt zur Laufzeit ausschließlich PNG, kein SVG: PySide6.QtSvg lässt

@@ -2,9 +2,10 @@ import ctypes
 import string
 import sys
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from contextlib import contextmanager
 from pathlib import Path
 
 # SQLAlchemy resolves the "pysqlcipher" dialect by string name at runtime, so
@@ -329,6 +330,43 @@ def is_removable_drive(drive_root: Path) -> bool:
 def drive_already_set_up(drive_root: Path) -> bool:
     """True if drive_root already carries a valid Kennungsdatei."""
     return _read_identifier_file(drive_root) is not None
+
+
+@contextmanager
+def foreign_keys_disabled(connection: Connection) -> Iterator[None]:
+    """Runs a migration with SQLite's foreign key enforcement switched off.
+
+    SQLite cannot alter most column/constraint definitions in place, so
+    Alembic's batch mode rebuilds the table: copy into a new table, DROP the
+    old one, rename. With foreign keys enforced, that DROP TABLE is an
+    implicit DELETE that fires ON DELETE CASCADE - rebuilding `client` would
+    silently delete every session, rebuilding `session` every media link.
+    SQLite's own documented procedure for such schema changes is to turn
+    enforcement off for the duration and verify integrity afterwards with
+    PRAGMA foreign_key_check, which is exactly what this does.
+
+    PRAGMA foreign_keys is a no-op inside an open transaction, hence the
+    commits around it (the driver never has a real BEGIN pending here).
+    """
+    connection.exec_driver_sql("PRAGMA foreign_keys = OFF")
+    connection.commit()
+    try:
+        yield
+        if connection.in_transaction():
+            connection.commit()
+        violations = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+        connection.commit()
+        if violations:
+            raise StorageError(
+                "Nach der Datenbank-Aktualisierung passen gespeicherte Verknüpfungen "
+                "nicht mehr zusammen. Bitte die Sicherung von vor der Aktualisierung "
+                "wiederherstellen."
+            )
+    finally:
+        if connection.in_transaction():
+            connection.rollback()
+        connection.exec_driver_sql("PRAGMA foreign_keys = ON")
+        connection.commit()
 
 
 def apply_migrations(engine: Engine) -> None:
