@@ -6,6 +6,7 @@ from klientenverwaltung.services.client_service import (
 )
 from klientenverwaltung.services.errors import (
     ConflictError,
+    DataUnavailableError,
     NotFoundError,
     ServiceError,
     SessionOverlapError,
@@ -32,6 +33,7 @@ __all__ = [
     "ClientListEntry",
     "ClientService",
     "ConflictError",
+    "DataUnavailableError",
     "ImportOutcome",
     "MediaKind",
     "MediaOverviewEntry",

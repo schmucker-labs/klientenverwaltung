@@ -10,7 +10,9 @@ from klientenverwaltung.models import Client
 from klientenverwaltung.repositories import ClientRepository, TreatmentSessionRepository
 from klientenverwaltung.services.errors import NotFoundError, ValidationError
 from klientenverwaltung.services.search import matches, search_terms
-from klientenverwaltung.services.transaction import transaction
+from klientenverwaltung.services.transaction import database_errors_as, transaction
+
+_LOAD_ERROR = "Die Klientendaten konnten nicht geladen werden."
 
 # German nobiliary/prefix particles: stay lowercase unless they open the field
 # (e.g. "anna von meyer" -> "Anna von Meyer", but "von meyer" -> "Von Meyer").
@@ -97,6 +99,7 @@ class ClientService:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
+    @database_errors_as("Klient konnte nicht gespeichert werden.")
     def create_client(
         self,
         *,
@@ -140,6 +143,7 @@ class ClientService:
             ClientRepository(session).add(client)
         return client
 
+    @database_errors_as(_LOAD_ERROR)
     def get_client(self, client_id: int) -> Client:
         with self._session_factory() as session:
             client = ClientRepository(session).get_by_id(client_id)
@@ -147,6 +151,7 @@ class ClientService:
             raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
         return client
 
+    @database_errors_as(_LOAD_ERROR)
     def list_clients(
         self, *, include_archived: bool = False, search: str | None = None
     ) -> list[Client]:
@@ -154,6 +159,7 @@ class ClientService:
             clients = ClientRepository(session).list(include_archived=include_archived)
         return _filter_by_search(clients, search)
 
+    @database_errors_as(_LOAD_ERROR)
     def list_clients_with_last_session(
         self, *, include_archived: bool = False, search: str | None = None
     ) -> list[ClientListEntry]:
@@ -188,6 +194,7 @@ class ClientService:
                 for client in clients
             ]
 
+    @database_errors_as("Klient konnte nicht gespeichert werden.")
     def update_client(
         self,
         client_id: int,
@@ -231,12 +238,15 @@ class ClientService:
                 pass
         return client
 
+    @database_errors_as("Klient konnte nicht aktualisiert werden.")
     def archive_client(self, client_id: int) -> None:
         self._set_archived(client_id, archived=True)
 
+    @database_errors_as("Klient konnte nicht aktualisiert werden.")
     def unarchive_client(self, client_id: int) -> None:
         self._set_archived(client_id, archived=False)
 
+    @database_errors_as("Klient konnte nicht gelöscht werden.")
     def delete_client(self, client_id: int) -> None:
         with self._session_factory() as session:
             repo = ClientRepository(session)

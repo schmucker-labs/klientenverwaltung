@@ -2,6 +2,10 @@ class ServiceError(Exception):
     """Base class for errors raised by the service layer, message text is German."""
 
 
+class DataUnavailableError(ServiceError):
+    """The data (the data drive) cannot be reached right now, e.g. unplugged."""
+
+
 class ValidationError(ServiceError):
     """Input data violates a business rule."""
 

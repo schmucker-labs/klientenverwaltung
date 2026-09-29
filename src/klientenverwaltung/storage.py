@@ -16,6 +16,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import URL, Connection, Engine, create_engine, event
+from sqlalchemy.engine import ExceptionContext
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 from alembic import command
@@ -45,10 +46,6 @@ class MultipleDataDrivesFoundError(StorageError):
 
 class IncorrectPasswordError(StorageError):
     """The given password does not decrypt the database."""
-
-
-class DataDriveDisconnectedError(StorageError):
-    """The connection to the data drive was lost while the application was running."""
 
 
 class WeakPasswordError(StorageError):
@@ -212,8 +209,14 @@ def open_database(db_path: Path, password: str) -> Engine:
 
     Raises IncorrectPasswordError instead of letting SQLCipher's generic
     "file is not a database" error (indistinguishable from real corruption)
-    reach callers unexplained. Also registers a handler that turns a mid-
-    operation loss of the drive into DataDriveDisconnectedError.
+    reach callers unexplained.
+
+    Also registers a handler that reports a mid-operation loss of the drive
+    as a disconnect: the resulting DBAPIError carries
+    connection_invalidated=True (which the service layer turns into a
+    German DataUnavailableError), and the pool drops its dead connections -
+    once the drive is plugged back in under the same letter, the next
+    operation simply works again, no restart needed.
     """
     if not db_path.exists():
         raise StorageError(f"Datenbankdatei wurde nicht gefunden: {db_path}")
@@ -227,15 +230,12 @@ def open_database(db_path: Path, password: str) -> Engine:
         raise IncorrectPasswordError("Das eingegebene Passwort ist falsch.") from exc
     except SQLAlchemyError as exc:
         engine.dispose()
-        raise StorageError("Datenbank konnte nicht geoeffnet werden.") from exc
+        raise StorageError("Datenbank konnte nicht geöffnet werden.") from exc
 
     @event.listens_for(engine, "handle_error")
-    def _translate_disconnect(context) -> None:
+    def _report_vanished_drive_as_disconnect(context: ExceptionContext) -> None:
         if not db_path.exists():
-            raise DataDriveDisconnectedError(
-                "Die Verbindung zur Datenplatte wurde unterbrochen. Bitte Datenplatte "
-                "wieder anschliessen und die Anwendung neu starten."
-            ) from context.original_exception
+            context.is_disconnect = True
 
     return engine
 
@@ -425,7 +425,12 @@ def has_pending_migrations(engine: Engine) -> bool:
     everywhere, whether that is fatal (a migration is about to run
     unprotected) or just a visible warning (nothing is about to change).
     """
-    with engine.connect() as connection:
-        current_revision = MigrationContext.configure(connection).get_current_revision()
+    try:
+        with engine.connect() as connection:
+            current_revision = MigrationContext.configure(
+                connection
+            ).get_current_revision()
+    except SQLAlchemyError as exc:
+        raise StorageError("Datenbank konnte nicht gelesen werden.") from exc
     script_directory = ScriptDirectory.from_config(_alembic_config())
     return current_revision != script_directory.get_current_head()

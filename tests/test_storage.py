@@ -343,7 +343,7 @@ class TestOpenDatabase:
         finally:
             engine.dispose()
 
-    def test_connection_loss_during_operation_raises_specific_error(
+    def test_connection_loss_is_reported_as_an_invalidated_connection(
         self, tmp_path: Path
     ) -> None:
         """Approximates a mid-operation drive disconnect.
@@ -353,6 +353,10 @@ class TestOpenDatabase:
         first releases that lock; the drive directory is then removed
         entirely (like a USB stick vanishing) and reused via the same,
         already-configured engine object to trigger the handle_error hook.
+
+        Reported as a disconnect (connection_invalidated), so the pool drops
+        its dead connections and the service layer can translate it into a
+        German "Datenplatte nicht erreichbar" message.
         """
         drive = tmp_path / "drive"
         drive.mkdir()
@@ -366,11 +370,9 @@ class TestOpenDatabase:
 
         shutil.rmtree(drive)
 
-        with (
-            pytest.raises(storage.DataDriveDisconnectedError),
-            engine.connect() as connection,
-        ):
+        with pytest.raises(DBAPIError) as exc_info, engine.connect() as connection:
             connection.execute(text("SELECT * FROM client"))
+        assert exc_info.value.connection_invalidated is True
 
 
 class TestCreateEncryptedEngineThreading:

@@ -21,7 +21,9 @@ from klientenverwaltung.services.errors import (
     ValidationError,
 )
 from klientenverwaltung.services.search import matches, search_terms
-from klientenverwaltung.services.transaction import transaction
+from klientenverwaltung.services.transaction import database_errors_as, transaction
+
+_LOAD_ERROR = "Die Mediendaten konnten nicht geladen werden."
 
 _logger = logging.getLogger(__name__)
 
@@ -171,6 +173,7 @@ class MediaService:
         self._drive_root = drive_root
         self._media_dir = drive_root / MEDIA_FOLDER_NAME
 
+    @database_errors_as("Datei konnte nicht gespeichert werden.")
     def import_file(
         self,
         session_id: int,
@@ -279,6 +282,7 @@ class MediaService:
             sha256=known_digest or digest,
         )
 
+    @database_errors_as(_LOAD_ERROR)
     def list_media_for_session(self, session_id: int) -> list[SessionMediaEntry]:
         with self._session_factory() as session:
             rows = MediaRepository(session).list_for_session(session_id)
@@ -294,10 +298,12 @@ class MediaService:
             for media, added_at in rows
         ]
 
+    @database_errors_as(_LOAD_ERROR)
     def count_media_for_sessions(self, session_ids: Sequence[int]) -> dict[int, int]:
         with self._session_factory() as session:
             return MediaRepository(session).count_for_sessions(session_ids)
 
+    @database_errors_as("Verknüpfung konnte nicht entfernt werden.")
     def remove_link(self, session_id: int, media_id: int) -> None:
         with self._session_factory() as session:
             repo = MediaRepository(session)
@@ -317,6 +323,7 @@ class MediaService:
     def resolve_media_path_for_stored_filename(self, stored_filename: str) -> Path:
         return self._media_dir / stored_filename
 
+    @database_errors_as("Datei konnte nicht umbenannt werden.")
     def rename_media(self, media_id: int, new_original_filename: str) -> Media:
         new_name = new_original_filename.strip()
         # The visible part is everything before the last dot - a name that
@@ -341,6 +348,7 @@ class MediaService:
                 pass
         return media
 
+    @database_errors_as(_LOAD_ERROR)
     def find_now_unused(self, media_ids: Sequence[int]) -> list[Media]:
         if not media_ids:
             return []
@@ -356,6 +364,7 @@ class MediaService:
                     unused.append(media)
         return unused
 
+    @database_errors_as("Mediendateien konnten nicht gelöscht werden.")
     def delete_unused_media(self, media_ids: Sequence[int]) -> list[Media]:
         if not media_ids:
             return []
@@ -388,10 +397,12 @@ class MediaService:
             return False
         return True
 
+    @database_errors_as(_LOAD_ERROR)
     def list_media_ids_for_client(self, client_id: int) -> list[int]:
         with self._session_factory() as session:
             return MediaRepository(session).list_media_ids_for_client(client_id)
 
+    @database_errors_as(_LOAD_ERROR)
     def list_all_media(self) -> list[MediaOverviewEntry]:
         with self._session_factory() as session:
             repo = MediaRepository(session)
@@ -438,6 +449,7 @@ class MediaService:
                 )
         return entries
 
+    @database_errors_as(_LOAD_ERROR)
     def list_usages(self, media_id: int) -> list[MediaUsageEntry]:
         with self._session_factory() as session:
             rows = MediaRepository(session).list_usages_for_media(media_id)
@@ -446,11 +458,13 @@ class MediaService:
             for first, last, date in rows
         ]
 
+    @database_errors_as(_LOAD_ERROR)
     def count_sessions_for_media(self, media_id: int) -> int:
         with self._session_factory() as session:
             usage = MediaRepository(session).usage_counts_for_media([media_id])
         return usage.get(media_id, 0)
 
+    @database_errors_as("Dateien konnten nicht zugeordnet werden.")
     def link_existing_media(self, session_id: int, media_ids: Sequence[int]) -> None:
         with self._session_factory() as session:
             repo = MediaRepository(session)
@@ -460,6 +474,7 @@ class MediaService:
             with transaction(session, "Dateien konnten nicht zugeordnet werden."):
                 pass
 
+    @database_errors_as(_LOAD_ERROR)
     def list_unlinked_media_for_session(
         self, session_id: int, search: str | None = None
     ) -> list[MediaPickerEntry]:

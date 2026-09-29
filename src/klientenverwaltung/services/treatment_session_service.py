@@ -17,7 +17,9 @@ from klientenverwaltung.services.errors import (
     SessionOverlapError,
     ValidationError,
 )
-from klientenverwaltung.services.transaction import transaction
+from klientenverwaltung.services.transaction import database_errors_as, transaction
+
+_LOAD_ERROR = "Die Sitzungen konnten nicht geladen werden."
 
 
 @dataclass(frozen=True)
@@ -90,6 +92,7 @@ class TreatmentSessionService:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
+    @database_errors_as("Sitzung konnte nicht gespeichert werden.")
     def create_session(
         self,
         *,
@@ -124,6 +127,7 @@ class TreatmentSessionService:
                 repo.add(treatment_session)
         return treatment_session
 
+    @database_errors_as(_LOAD_ERROR)
     def get_session(self, session_id: int) -> TreatmentSession:
         with self._session_factory() as session:
             treatment_session = TreatmentSessionRepository(session).get_by_id(
@@ -133,10 +137,12 @@ class TreatmentSessionService:
             raise NotFoundError(f"Sitzung mit ID {session_id} wurde nicht gefunden.")
         return treatment_session
 
+    @database_errors_as(_LOAD_ERROR)
     def list_sessions_for_client(self, client_id: int) -> list[TreatmentSession]:
         with self._session_factory() as session:
             return TreatmentSessionRepository(session).list_for_client(client_id)
 
+    @database_errors_as(_LOAD_ERROR)
     def list_sessions_with_content(self, client_id: int) -> list[TreatmentSession]:
         """Sessions with a Bericht or Impulse entered (Auftrag A2's report
         window), newest first - feeds both the Berichtsverlauf dialog and
@@ -146,6 +152,7 @@ class TreatmentSessionService:
                 client_id
             )
 
+    @database_errors_as(_LOAD_ERROR)
     def get_session_summary(
         self, client_id: int, *, now: datetime | None = None
     ) -> SessionSummary:
@@ -159,6 +166,7 @@ class TreatmentSessionService:
             next_session_date=next_sessions[0].date if next_sessions else None,
         )
 
+    @database_errors_as("Sitzung konnte nicht gespeichert werden.")
     def update_session(
         self,
         session_id: int,
@@ -197,6 +205,7 @@ class TreatmentSessionService:
                 pass
         return treatment_session
 
+    @database_errors_as("Bericht konnte nicht gespeichert werden.")
     def save_report(
         self, session_id: int, *, report: str | None, impulses: str | None
     ) -> TreatmentSession:
@@ -217,6 +226,7 @@ class TreatmentSessionService:
                 pass
         return treatment_session
 
+    @database_errors_as("Sitzung konnte nicht gelöscht werden.")
     def delete_session(self, session_id: int) -> None:
         with self._session_factory() as session:
             repo = TreatmentSessionRepository(session)

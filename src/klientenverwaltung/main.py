@@ -18,7 +18,9 @@ from sqlalchemy.orm import sessionmaker
 from klientenverwaltung import backup, config, crash_log, storage
 from klientenverwaltung.services import (
     ClientService,
+    DataUnavailableError,
     MediaService,
+    ServiceError,
     TreatmentSessionService,
     TreatmentTypeService,
 )
@@ -155,6 +157,32 @@ def _run_startup_backup(engine: Engine, drive_root: Path) -> bool:
         return False
 
 
+def _prepare_database(engine: Engine, drive_root: Path) -> bool:
+    """Startup backup, then migrations. Returns False - after telling the
+    user why - if the program must not start."""
+    try:
+        if not _run_startup_backup(engine, drive_root):
+            if storage.has_pending_migrations(engine):
+                show_error(
+                    "Es konnte keine Sicherung erstellt werden (weder im "
+                    "Sicherungsordner noch auf der Datenplatte). Da eine "
+                    "Datenbank-Aktualisierung ansteht, wird das Programm nicht "
+                    "gestartet, um die Daten nicht zu gefährden.",
+                    title="Sicherung fehlgeschlagen",
+                )
+                return False
+            show_error(
+                "Es konnte keine automatische Sicherung erstellt werden. Bitte "
+                "den Sicherungsordner in den Einstellungen prüfen.",
+                title="Sicherung fehlgeschlagen",
+            )
+        storage.apply_migrations(engine)
+    except storage.StorageError as exc:
+        show_error(str(exc), title="Fehler")
+        return False
+    return True
+
+
 def _show_splash() -> QSplashScreen:
     """Shows the splash centered on whichever screen the mouse cursor is
     currently on, invisible at first so _play_splash_intro() can fade it in.
@@ -214,28 +242,7 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
     drive_root, engine = acquired
     app.aboutToQuit.connect(engine.dispose)
 
-    if not _run_startup_backup(engine, drive_root):
-        if storage.has_pending_migrations(engine):
-            show_error(
-                "Es konnte keine Sicherung erstellt werden (weder im "
-                "Sicherungsordner noch auf der Datenplatte). Da eine "
-                "Datenbank-Aktualisierung ansteht, wird das Programm nicht "
-                "gestartet, um die Daten nicht zu gefährden.",
-                title="Sicherung fehlgeschlagen",
-            )
-            splash.close()
-            app.exit(0)
-            return
-        show_error(
-            "Es konnte keine automatische Sicherung erstellt werden. Bitte "
-            "den Sicherungsordner in den Einstellungen prüfen.",
-            title="Sicherung fehlgeschlagen",
-        )
-
-    try:
-        storage.apply_migrations(engine)
-    except storage.StorageError as exc:
-        show_error(str(exc), title="Fehler")
+    if not _prepare_database(engine, drive_root):
         splash.close()
         app.exit(0)
         return
@@ -279,6 +286,21 @@ def _log_and_show_crash(
     """
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
+
+    if isinstance(exc_value, ServiceError):
+        # A service call no dialog caught - typically a read while the data
+        # drive was unplugged. Its message is already written for the user,
+        # the service rolled back, nothing is half-done: show it and keep
+        # running instead of ending the program.
+        show_error(
+            str(exc_value),
+            title=(
+                "Datenplatte nicht erreichbar"
+                if isinstance(exc_value, DataUnavailableError)
+                else "Fehler"
+            ),
+        )
         return
 
     log_path = crash_log.write_crash_log(exc_value, exc_tb)

@@ -52,8 +52,7 @@ class MediaImportWorker(QObject):
         except Exception:  # noqa: BLE001
             # Anything other than a ServiceError (e.g. a plain OSError from
             # shutil.disk_usage()/Path.stat() if the drive vanishes
-            # mid-copy, or a StorageError from storage.py's own
-            # disconnect-detection hook) must still reach the GUI thread as
+            # mid-copy) must still reach the GUI thread as
             # a failed signal, never propagate silently off a background
             # thread - an uncaught exception here leaves the caller's modal
             # LoadingDialog on screen forever with no way to dismiss it,
