@@ -39,6 +39,20 @@ Ziel: Services und Repositories sollen später unverändert hinter einer Web-API
 laufen können, falls die Datenbank auf einen Server (PostgreSQL) umzieht. Deshalb keine
 SQLite-spezifischen Abfragen in Repositories, außer in `storage.py`.
 
+Dazu gehört:
+- Services geben nur einfache Werte zurück (frozen dataclasses wie `ClientDetails`,
+  `SessionEntry`, `TreatmentTypeEntry`, `StoredMedia`), nie ORM-Objekte. `ui/` importiert
+  weder `models` noch `repositories`, `services/`/`repositories/` kein Qt - geprüft von
+  `tests/test_architecture.py`.
+- Jede öffentliche Service-Methode übersetzt SQLAlchemy-Fehler in einen `ServiceError`
+  (`database_errors_as` bzw. `transaction()`), eine getrennte Datenplatte in
+  `DataUnavailableError`. Ein nirgends abgefangener `ServiceError` erscheint als normale
+  Meldung, das Programm läuft weiter.
+- Textsuche passiert im Service (`services/search.py`: Groß-/Kleinschreibung und Umlaute
+  egal, alle Suchbegriffe müssen passen) - SQLites `LIKE` kennt nur ASCII.
+- `app_context.py` bündelt die Services (`AppServices`) und die offene Datenbank
+  (`OpenDatabase`, inkl. Passwortwechsel) für die Oberfläche; gebaut in `main.py`.
+
 ```
 klientenverwaltung/
 ├── CLAUDE.md
@@ -47,7 +61,10 @@ klientenverwaltung/
 ├── src/klientenverwaltung/
 │   ├── main.py          # Einstiegspunkt
 │   ├── config.py        # Einstellungen (liegen unter %APPDATA%, KEINE Klientendaten)
-│   ├── storage.py       # USB-Platte finden, verschlüsselte Verbindung aufbauen
+│   ├── storage.py       # USB-Platte finden, verschlüsselte Verbindung, Migrationen
+│   ├── backup.py        # Sicherungen erstellen, auflisten, wiederherstellen
+│   ├── app_context.py   # AppServices + OpenDatabase für die Oberfläche
+│   ├── crash_log.py     # error.log ohne Meldungstexte (keine Klientendaten)
 │   ├── models/
 │   ├── repositories/
 │   ├── services/
@@ -91,8 +108,8 @@ klientenverwaltung/
 | id | int PK | |
 | client_id | FK → client.id | Pflicht, ON DELETE CASCADE |
 | treatment_type_id | FK → treatment_type.id | Pflicht, ON DELETE RESTRICT |
-| date | datetime | |
-| duration_minutes | int, optional | |
+| date | datetime | minutengenau (der Service kürzt Sekunden), naive lokale Zeit |
+| duration_minutes | int | Pflicht, 1 bis 480 (8 Stunden) |
 | report | text, optional | HTML, aus dem Berichtsfenster (Auftrag A2); leerer Inhalt wird als NULL gespeichert |
 | impulses | text, optional | HTML, aus dem Berichtsfenster (Auftrag A2); leerer Inhalt wird als NULL gespeichert |
 | created_at, updated_at | datetime | automatisch |
@@ -119,6 +136,11 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 | added_at | datetime | automatisch, wann diese Sitzung mit der Datei verknüpft wurde |
 
 ### Regeln
+- Zeitstempel: `session.date`, `media.created_at` und `session_media.added_at` sind naive
+  lokale Zeit (Python-Default). `created_at`/`updated_at` von `client` und `session` sind
+  UTC (SQLites `CURRENT_TIMESTAMP`) - für die Anzeige umrechnen (siehe
+  `ClientService.client_since_date`). Neue Zeitstempel als naive lokale Zeit.
+- Namen von Behandlungsarten sind ohne Beachtung der Groß-/Kleinschreibung eindeutig.
 - Klient löschen löscht alle zugehörigen Sitzungen (Gesundheitsdaten dürfen nicht verwaist
   zurückbleiben). Endgültiges Löschen immer mit Sicherheitsabfrage; Alltag = archivieren.
 - Behandlungsart, die in Sitzungen verwendet wird, darf nicht gelöscht werden, nur deaktiviert.
@@ -160,13 +182,28 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
 - Datenbank mit SQLCipher verschlüsselt, Passwortabfrage bei jedem Start.
 - Erster Start: Einrichtungsassistent (Platte wählen, Passwort doppelt eingeben, Mindestlänge
   12 Zeichen, deutlicher Hinweis: Passwort verloren = Daten verloren, Bestätigung erforderlich).
-- Menüpunkt "Passwort ändern" (Rekey).
-- Bei jeder Verbindung: `PRAGMA foreign_keys = ON` und `PRAGMA synchronous = FULL`.
-- Das Passwort nie speichern oder loggen.
+- Menüpunkt "Passwort ändern" (Einstellungen; SQLCipher-Rekey, vorher eine Sicherung).
+  Ältere Sicherungen behalten ihr damaliges Passwort; beim Wiederherstellen fragt das
+  Programm danach und stellt die Daten auf das aktuelle Passwort um.
+- Bei jeder Verbindung: `PRAGMA foreign_keys = ON` und `PRAGMA synchronous = FULL` -
+  außer während Migrationen (`storage.foreign_keys_disabled`, siehe docs/build.md).
+- Das Passwort nie speichern oder loggen. Es wird per `URL.create` an SQLAlchemy übergeben,
+  nie in einen URL-String eingesetzt (Sonderzeichen wie `@` oder `%41`). Engines laufen mit
+  `hide_parameters=True`; `error.log` enthält nur Ausnahmetypen und Codestellen, nie
+  Meldungstexte (`crash_log.py`).
+- Die UUID der verwendeten Datenplatte wird in `config.json` gemerkt; eine andere
+  Datenplatte wird nur nach Rückfrage verwendet. Eine Platte mit Kennungsdatei, aber ohne
+  Datenbank ist eine abgebrochene Einrichtung und wird vom Assistenten abgeschlossen.
+- Sicherungen: automatisch beim Start (vor Migrationen immer) und beim Beenden, jeweils nur
+  bei Änderungen, in den Sicherungsordner; eine Kopie auf der Datenplatte selbst zählt
+  nicht als Sicherung. Ohne Sicherungsordner erinnert das Programm höchstens wöchentlich.
+  Eine Wiederherstellung prüft die Sicherung vorher und legt eine Sicherheitskopie an
+  (in der Liste als "Vor Wiederherstellung" wieder herstellbar).
+- Es läuft immer nur eine Instanz (Sperrdatei in %APPDATA%).
 - Mediendateien werden nur kopiert, nie verschoben oder gelöscht, und liegen
   unverschlüsselt im Ordner "medien" auf der Datenplatte - ihr Schutz hängt
   bis auf Weiteres von der Verschlüsselung der ganzen Datenplatte ab (siehe
-  TODO.md, "Vor der Übergabe").
+  TODO.md, "Vor der Übergabe"). Sie sind nicht Teil der Sicherungen.
 
 ## Build & Auslieferung
 

@@ -1,11 +1,12 @@
 # Klientenverwaltung – Projektkontext
 
-Übergabedokument für einen neuen Chat. Stand: 27.09.2026.
+Übergabedokument für einen neuen Chat. Stand: 29.09.2026.
 Ergänzt die `CLAUDE.md` im Repo (technische Regeln) und die `TODO.md` (offene Punkte).
 
-**Phasenstand:** Phase A (Bericht/Impulse mit Formatierung) und Phase B
-(Klientenübersicht, Berichtsverlauf) sind abgeschlossen. Phase C (Medien) ist die
-nächste offene Phase, Umfang noch nicht im Detail festgelegt.
+**Phasenstand:** Phase A (Bericht/Impulse mit Formatierung), Phase B
+(Klientenübersicht, Berichtsverlauf), Phase C (Medien, Medienübersicht) und Auftrag D1
+(keine Standard-Behandlungsarten) sind abgeschlossen. Danach wurde ein umfassendes
+Code-Review (`CODE_REVIEW.md`) durchgeführt und vollständig umgesetzt.
 
 ---
 
@@ -37,27 +38,36 @@ SQLCipher, pytest, ruff, PyInstaller, Git.
 mit Datenbankabfragen) → `models/`. Ziel: Services und Repositories sollen bei einem
 späteren Umzug auf einen Server (PostgreSQL, Web-API) unverändert weiterlaufen.
 
-**Datenmodell:** drei Tabellen.
+**Datenmodell:** fünf Tabellen.
 - `client` – Stammdaten, Anliegen, Notizen, Einwilligungsdatum, `archived`
 - `treatment_type` – Behandlungsarten, frei pflegbar, `active` statt Löschen
-- `session` – Sitzungen mit Datum, Pflicht-Dauer, Bericht und Impulse (formatierter
-  Text, HTML); Klient löschen löscht Sitzungen mit (Cascade), verwendete
-  Behandlungsart ist nicht löschbar (Restrict)
+- `session` – Sitzungen mit Datum (minutengenau), Pflicht-Dauer (höchstens 8 Std.),
+  Bericht und Impulse (formatierter Text, HTML); Klient löschen löscht Sitzungen mit
+  (Cascade), verwendete Behandlungsart ist nicht löschbar (Restrict)
+- `media` / `session_media` – Mediendateien im Ordner `medien` der Datenplatte (UUID-Namen,
+  SHA-256 zur Duplikaterkennung) und ihre Zuordnung zu Sitzungen (eine Datei kann mehreren
+  Sitzungen gehören)
 
 Annahme, noch unbestätigt: eine Sitzung hat genau eine Behandlungsart.
 
 **Speicherung:** Die Datenplatte wird über eine Kennungsdatei (`klientenverwaltung.id`
 mit UUID) gefunden, nicht über den Laufwerksbuchstaben. Die Datenbank ist mit
-SQLCipher verschlüsselt, Passwortabfrage bei jedem Start, Passwortwechsel möglich.
+SQLCipher verschlüsselt, Passwortabfrage bei jedem Start, Passwortwechsel über
+„Einstellungen → Passwort ändern“ (ohne Neustart). Die UUID der Platte merkt sich der
+Laptop; eine andere Datenplatte wird nur nach Rückfrage verwendet.
 Eine zusätzliche Plattenverschlüsselung mit BitLocker wurde bewusst verworfen, solange
 auf der Platte nur die verschlüsselte Datenbank liegt (zwei Passwörter im Alltag sind
 in der Praxis unsicherer als eines). Sobald dort andere Dokumente abgelegt werden,
 muss BitLocker dazu.
 
 **Sicherungen:** frei wählbarer Ordner, Kopie per `VACUUM INTO`, Rotation auf zehn
-Stände, eigener Unterordner für Kopien vor einer Wiederherstellung, zwingende
-Sicherung vor jeder Migration. Verwaltungsdialog mit Pfad, Übersicht und
-Wiederherstellung; Datum der letzten Sicherung in der Statusleiste.
+Stände, eigener Unterordner für Kopien vor einer Wiederherstellung (in der Liste als
+„Vor Wiederherstellung“ selbst wiederherstellbar), zwingende Sicherung vor jeder
+Migration, automatisch beim Start und beim Beenden (nur bei Änderungen). Eine Kopie auf
+der Datenplatte selbst zählt nicht als Sicherung; ohne Sicherungsordner erinnert das
+Programm wöchentlich. Wiederherstellung prüft die Sicherung vorher und stellt Sicherungen
+von vor einer Passwortänderung auf das aktuelle Passwort um. Mediendateien werden nicht
+gesichert.
 
 ---
 
@@ -82,14 +92,18 @@ Wiederherstellung; Datum der letzten Sicherung in der Statusleiste.
 - Berichtsverlauf je Klient (reine Ansicht): alle Sitzungen mit Bericht oder
   Impulsen, neueste zuerst, zwei Spalten nebeneinander mit der gespeicherten
   Formatierung, leere Seite zeigt „–" statt leerer Fläche *(Phase B)*
-- Behandlungsarten pflegen, deaktivieren statt löschen
+- Medien je Sitzung (Auftrag C1), Medienübersicht mit Umbenennen, „Aus vorhandenen
+  Medien“ und Rückfrage bei nicht mehr verwendeten Dateien (Auftrag C2)
+- Behandlungsarten pflegen, deaktivieren statt löschen; keine Standard-Arten beim
+  Einrichten (Auftrag D1)
 - Einrichtungsassistent beim ersten Start (Platte, Passwort, Sicherungsordner)
 - Light- und Dark-Theme in warmen Tönen, umschaltbar über Statusleiste und Menü
 - Logo, Splash Screen, Über-Dialog mit Version
 - Auslieferung als eigenständige .exe plus Debug-Variante mit Konsole
 
-Aktueller Stand: 152 Tests grün, ruff sauber, Debug-.exe für die Klientenübersicht
-und den Berichtsverlauf gebaut und geprüft, keine offenen Fehler.
+Aktueller Stand: alle Befunde aus `CODE_REVIEW.md` umgesetzt, über 350 Tests grün,
+ruff (Lint und Format) sauber. Die gebaute `.exe` ist nach den Review-Änderungen noch
+einmal auf einem Rechner ohne Python zu prüfen.
 
 ---
 
@@ -117,9 +131,8 @@ Grund kennen.
 
 ## Offene Punkte
 
-- **Phase C (Medien)** – nächste geplante Phase nach A (Bericht-Formatierung) und
-  B (Klientenübersicht, Berichtsverlauf). Umfang noch nicht im Detail festgelegt,
-  wird im Gespräch mit dem Anwender geklärt.
+- **Verschlüsselung der Mediendateien** klären (BitLocker To Go / VeraCrypt), bevor
+  echte Aufnahmen gespeichert werden – siehe `TODO.md`.
 - **Terminübersicht/Kalender** – vom Anwender gewünscht, noch nicht gebaut. Geplant
   war zunächst die schlanke Variante: Liste aller kommenden Termine über alle
   Klienten mit Umschaltung auf Vergangenheit, dazu ein Statusfeld für Sitzungen

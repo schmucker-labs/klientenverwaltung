@@ -24,6 +24,9 @@ und im README verlinken:
   To Go; Home -> Upgrade/VeraCrypt/eigene Verschlüsselung). Bevor echte Aufnahmen
   gespeichert werden!
 - Heiler informieren: Mediendateien werden NICHT gesichert.
+- Auf dem Ziel-Laptop prüfen, ob SmartScreen / die "Intelligente App-Steuerung" die nicht
+  signierte `.exe` zulässt (siehe docs/build.md).
+- Wiederherstellung und "Passwort ändern" einmal gemeinsam durchspielen.
 
 ## Fragen an den Anwender
 
@@ -34,10 +37,13 @@ und im README verlinken:
 
 ## Später
 
-- Phase C (Medien) – nächste geplante Phase nach A (Bericht-Formatierung, erledigt)
-  und B (Klientenübersicht/Berichtsverlauf, erledigt). Umfang noch nicht im Detail
-  festgelegt.
 - Export (CSV/PDF), Statistiken wie Sitzungen pro Monat
+- Aus dem Code-Review (CODE_REVIEW.md), jeweils Entscheidung mit dem Anwender nötig:
+  - Export je Klient (PDF) für Auskunftsersuchen nach DSGVO Art. 15/20
+  - optionale automatische Sperre (Passwort erneut) nach Inaktivität
+  - Mediendateien in die Sicherungen einbeziehen
+  - Hinweis an den Anwender: kopierte Berichtstexte landen ggf. im Windows-Zwischenablageverlauf
+  - Code-Signatur der `.exe`
 - Terminübersicht/Kalender (Ausbaustufe nach dem MVP)
   - Schlanke Variante zuerst: Liste aller zukünftigen Sitzungen aller Klienten, nach Datum sortiert, mit Klient, Uhrzeit und Behandlungsart; Klick springt zum Klienten; Umschaltung kommende Termine / Vergangenheit. Nutzt die bestehende session-Tabelle, im Wesentlichen nur Oberfläche.
   - Dabei Statusfeld für Sitzungen einführen (vereinbart, wahrgenommen, abgesagt, nicht erschienen). Ohne Status gilt jeder vergangene Termin automatisch als stattgefunden. Kleine Alembic-Migration mit Standardwert.

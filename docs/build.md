@@ -31,7 +31,8 @@ Alembic-Migration hinzukommt.
 - Die Anwendung startet sich nicht selbst neu: Ein aus der .exe heraus gestarteter
   Neuprozess findet die Qt-Plugins nicht zuverlässig, weil PyInstaller sie in einen
   temporären Ordner entpackt, den die beendende Instanz löscht. Wo ein Neustart nötig
-  ist, wird der Nutzer darauf hingewiesen und die Anwendung beendet sich.- Kein UPX (`upx=False` in beiden `.spec`-Dateien): UPX-gepackte Programme lösen deutlich
+  ist, wird der Nutzer darauf hingewiesen und die Anwendung beendet sich.
+- Kein UPX (`upx=False` in beiden `.spec`-Dateien): UPX-gepackte Programme lösen deutlich
   häufiger Fehlalarme von Virenscannern aus. Die `.exe` ist nicht signiert: SmartScreen
   warnt beim ersten Start ("Weitere Informationen → Trotzdem ausführen"), und die
   Windows-11-"Intelligente App-Steuerung" (Smart App Control) kann nicht signierte

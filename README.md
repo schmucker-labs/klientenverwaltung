@@ -16,8 +16,23 @@ Schutz von Gesundheitsdaten.
 - **Zweck:** Klientenstammdaten, Anliegen und Sitzungsverlauf an einem Ort verwalten, ohne
   Papierkartei und ohne Cloud-Dienst.
 - **Datenschutz zuerst:** Sitzungsnotizen enthalten Angaben zu Gesundheit und Befinden –
-  besondere Kategorien personenbezogener Daten nach Art. 9 DSGVO. Die Daten liegen deshalb
-  verschlüsselt auf einer externen USB-Festplatte, nie unverschlüsselt auf dem Laptop.
+  besondere Kategorien personenbezogener Daten nach Art. 9 DSGVO. Die Datenbank liegt deshalb
+  SQLCipher-verschlüsselt auf einer externen USB-Festplatte, nie auf dem Laptop. Zu Sitzungen
+  abgelegte Mediendateien liegen unverschlüsselt auf derselben Platte; ihr Schutz hängt von
+  der Verschlüsselung der ganzen Platte ab (siehe `TODO.md`).
+
+## Funktionen
+
+- Klientenliste mit Suche (Groß-/Kleinschreibung und Umlaute egal, auch „Vorname Nachname“),
+  Archiv, letzter Sitzung und nächstem Termin; Klientenübersicht und Stammdatenformular
+- Sitzungen je Klient mit Überschneidungsprüfung (direkt anschließende Termine erlaubt),
+  Bericht und Impulse mit einfacher Formatierung, Berichtsverlauf
+- Medien (Bilder, Audio, Video) je Sitzung: Kopie auf die Datenplatte unter neutralem
+  Dateinamen, Duplikaterkennung per SHA-256, Medienübersicht mit Abgleich Ordner ↔ Datenbank
+- Behandlungsarten frei pflegbar, deaktivieren statt löschen
+- Sicherungen beim Start und beim Beenden, geprüfte und umkehrbare Wiederherstellung,
+  „Passwort ändern“ (SQLCipher-Rekey) ohne Neustart
+- Hell- und Dunkel-Theme, vollständig per Tastatur bedienbar
 
 ## Screenshots
 
@@ -98,6 +113,7 @@ uv run klientenverwaltung --reset-settings   # Fenstergeometrie/QSettings zurüc
 ```bash
 uv run pytest
 uv run ruff check .
+uv run ruff format --check .
 ```
 
 **Migrationen manuell ausführen** (die Anwendung selbst macht das automatisch beim Start; nur
@@ -140,6 +156,17 @@ PyInstaller-Fallstricken stehen in [`docs/build.md`](docs/build.md) – vor Änd
   Nutzen nur Komplexität hinzugefügt.
 - **Fenster-Titelleisten werden nicht angepasst** – bewusst natives Windows-Systemelement, um
   Betriebssystem-Konsistenz nicht für reine Optik zu opfern.
+- **Services liefern Werte, keine ORM-Objekte.** Die Oberfläche bekommt frozen dataclasses
+  (`ClientDetails`, `SessionEntry` …) und importiert keine Modelle – ein Architekturtest
+  sichert das ab. So hängt nichts an „zufällig“ geladenen Beziehungen, und die Services
+  könnten unverändert hinter einer API laufen.
+- **Suche in Python statt per SQL `LIKE`.** SQLite faltet nur ASCII – „über“ fand
+  „Überlingen“ nicht. Bei der Datenmenge einer Einzelpraxis ist das Filtern im Service
+  sofort fertig und bleibt datenbankunabhängig.
+- **Migrationen ohne Fremdschlüsselprüfung.** SQLites Batch-Modus baut Tabellen per
+  `DROP TABLE` neu auf; mit aktiven Fremdschlüsseln hätte das alle abhängigen Zeilen
+  gelöscht. Migrationen laufen deshalb mit `PRAGMA foreign_keys=OFF` und werden danach per
+  `foreign_key_check` geprüft.
 - **Löschen vs. Archivieren:** Ein Klient löschen entfernt zwingend auch alle zugehörigen
   Sitzungen (keine verwaisten Gesundheitsdaten), deshalb immer mit Sicherheitsabfrage. Für den
   Alltag ist Archivieren vorgesehen, endgültiges Löschen die bewusste Ausnahme.
