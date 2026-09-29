@@ -23,6 +23,12 @@ def error_log_path() -> Path:
     return Path(os.environ["APPDATA"]) / _CONFIG_DIR_NAME / _ERROR_LOG_FILENAME
 
 
+def instance_lock_path() -> Path:
+    """The lock file that keeps a second instance from starting (see
+    main._acquire_single_instance_lock) - holds only a process id."""
+    return Path(os.environ["APPDATA"]) / _CONFIG_DIR_NAME / "klientenverwaltung.lock"
+
+
 def _read_config() -> dict[str, str]:
     """The settings, or {} if the file is missing or unusable (unreadable,
     no valid JSON, or JSON that is not an object)."""

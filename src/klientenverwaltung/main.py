@@ -6,6 +6,7 @@ from types import TracebackType
 from PySide6.QtCore import (
     QCoreApplication,
     QEasingCurve,
+    QLockFile,
     QPropertyAnimation,
     QSettings,
     QTimer,
@@ -25,6 +26,7 @@ from klientenverwaltung.ui.dialogs import (
     ask_retry_or_setup,
     ask_use_other_data_drive,
     show_error,
+    show_info,
 )
 from klientenverwaltung.ui.icons import get_app_icon, load_pixmap
 from klientenverwaltung.ui.main_window import MainWindow
@@ -354,6 +356,25 @@ def _log_and_show_crash(
     app.quit()
 
 
+def _acquire_single_instance_lock(lock_path: Path) -> QLockFile | None:
+    """The lock that keeps a second copy of the program from running, or
+    None if another instance holds it.
+
+    Two instances on the same database (easily started by a second double
+    click while the splash is showing) would each show stale lists,
+    overwrite each other's edits and block a restore. Time-based staleness
+    is disabled because the lock is held for the whole run; a lock left by
+    a crashed instance is still recognized through its process id.
+    """
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return QLockFile(str(lock_path))  # cannot lock at all: do not block starting
+    lock = QLockFile(str(lock_path))
+    lock.setStaleLockTime(0)
+    return lock if lock.tryLock(100) else None
+
+
 def main() -> int:
     sys.excepthook = _log_and_show_crash
 
@@ -376,6 +397,16 @@ def main() -> int:
     app.setFont(font)
     app.setWindowIcon(get_app_icon())
     apply_theme_mode(load_theme_mode())
+
+    # Held (referenced) until the process ends.
+    instance_lock = _acquire_single_instance_lock(config.instance_lock_path())
+    if instance_lock is None:
+        show_info(
+            "Die Klientenverwaltung läuft bereits. Bitte das schon geöffnete "
+            "Fenster verwenden (zum Beispiel über die Taskleiste).",
+            title="Programm läuft bereits",
+        )
+        return 0
 
     splash = _show_splash()
     _play_splash_intro(splash, on_finished=lambda: _run_startup(app, splash))
