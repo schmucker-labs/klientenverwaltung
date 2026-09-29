@@ -25,7 +25,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def main() -> None:
     debug = "--debug" in sys.argv
-    spec_file = _REPO_ROOT / ("klientenverwaltung-debug.spec" if debug else "klientenverwaltung.spec")
+    spec_file = _REPO_ROOT / (
+        "klientenverwaltung-debug.spec" if debug else "klientenverwaltung.spec"
+    )
     exe_name = "klientenverwaltung-debug.exe" if debug else "klientenverwaltung.exe"
 
     result = subprocess.run(

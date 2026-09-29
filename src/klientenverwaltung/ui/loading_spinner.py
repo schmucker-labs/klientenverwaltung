@@ -65,7 +65,9 @@ class LoadingSpinnerWidget(QWidget):
         outer_rect = self.rect().adjusted(
             _OUTER_MARGIN, _OUTER_MARGIN, -_OUTER_MARGIN, -_OUTER_MARGIN
         )
-        painter.drawArc(outer_rect, self._outer_angle * 16, _OUTER_ARC_SPAN_DEGREES * 16)
+        painter.drawArc(
+            outer_rect, self._outer_angle * 16, _OUTER_ARC_SPAN_DEGREES * 16
+        )
 
         inner_pen = QPen(self._inner_color)
         inner_pen.setWidth(_INNER_PEN_WIDTH)
@@ -74,5 +76,7 @@ class LoadingSpinnerWidget(QWidget):
         inner_rect = self.rect().adjusted(
             _INNER_MARGIN, _INNER_MARGIN, -_INNER_MARGIN, -_INNER_MARGIN
         )
-        painter.drawArc(inner_rect, self._inner_angle * 16, _INNER_ARC_SPAN_DEGREES * 16)
+        painter.drawArc(
+            inner_rect, self._inner_angle * 16, _INNER_ARC_SPAN_DEGREES * 16
+        )
         painter.end()

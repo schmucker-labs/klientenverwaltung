@@ -265,5 +265,7 @@ class ClientListWidget(QWidget):
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
-        offer_to_delete_now_unused_media(self._services.media, candidate_media_ids, parent=self)
+        offer_to_delete_now_unused_media(
+            self._services.media, candidate_media_ids, parent=self
+        )
         self._reload()

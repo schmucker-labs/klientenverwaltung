@@ -20,7 +20,9 @@ def test_an_unusable_config_file_reads_as_empty(content: str) -> None:
     assert config.get_last_known_drive_path() is None
 
 
-def test_settings_survive_each_other_and_leave_no_temporary_file(tmp_path: Path) -> None:
+def test_settings_survive_each_other_and_leave_no_temporary_file(
+    tmp_path: Path,
+) -> None:
     config.set_backup_folder_path(tmp_path / "Sicherungen")
     config.set_last_known_drive_path(Path("E:/"))
 

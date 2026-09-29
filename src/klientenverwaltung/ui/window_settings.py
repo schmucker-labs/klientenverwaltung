@@ -277,9 +277,7 @@ class _AutoFitColumns(QObject):
                 MIN_COLUMN_WIDTH, available_width - other_columns_width
             )
         else:
-            new_widths = _proportional_widths(
-                widths, available_width, MIN_COLUMN_WIDTH
-            )
+            new_widths = _proportional_widths(widths, available_width, MIN_COLUMN_WIDTH)
         self._laid_out_once = True
         if new_widths == widths:
             return

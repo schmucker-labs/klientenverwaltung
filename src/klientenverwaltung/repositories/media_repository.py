@@ -52,7 +52,9 @@ class MediaRepository:
             .where(SessionMedia.session_id == session_id)
             .order_by(SessionMedia.added_at)
         )
-        return [(media, added_at) for media, added_at in self._session.execute(stmt).all()]
+        return [
+            (media, added_at) for media, added_at in self._session.execute(stmt).all()
+        ]
 
     def count_for_sessions(self, session_ids: Sequence[int]) -> dict[int, int]:
         if not session_ids:

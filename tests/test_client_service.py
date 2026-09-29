@@ -321,7 +321,11 @@ def test_build_address_block_with_all_fields_set() -> None:
     "overrides,expected_lines,expected_contact_lines",
     [
         ({"street": None}, ["12345 Musterstadt"], ["Telefon: 0123456789"]),
-        ({"postal_code": None}, ["Hauptstraße 1", "Musterstadt"], ["Telefon: 0123456789"]),
+        (
+            {"postal_code": None},
+            ["Hauptstraße 1", "Musterstadt"],
+            ["Telefon: 0123456789"],
+        ),
         ({"city": None}, ["Hauptstraße 1", "12345"], ["Telefon: 0123456789"]),
         (
             {"postal_code": None, "city": None},
@@ -330,7 +334,11 @@ def test_build_address_block_with_all_fields_set() -> None:
         ),
         ({"phone": None}, ["Hauptstraße 1", "12345 Musterstadt"], []),
         ({"phone": None, "email": None}, ["Hauptstraße 1", "12345 Musterstadt"], []),
-        ({"salutation": None}, ["Hauptstraße 1", "12345 Musterstadt"], ["Telefon: 0123456789"]),
+        (
+            {"salutation": None},
+            ["Hauptstraße 1", "12345 Musterstadt"],
+            ["Telefon: 0123456789"],
+        ),
     ],
 )
 def test_build_address_block_omits_missing_fields(
@@ -367,25 +375,29 @@ def test_client_since_date_converts_utc_created_at_to_local_calendar_date() -> N
     # for a positive UTC offset.
     created_at_utc = datetime(2026, 1, 15, 23, 30)
     local_tz = timezone(timedelta(hours=2))
-    assert ClientService.client_since_date(
-        created_at_utc, local_tz=local_tz
-    ) == date(2026, 1, 16)
+    assert ClientService.client_since_date(created_at_utc, local_tz=local_tz) == date(
+        2026, 1, 16
+    )
 
 
 def test_client_since_date_keeps_same_local_day_when_no_midnight_crossing() -> None:
     created_at_utc = datetime(2026, 1, 15, 10, 0)
     local_tz = timezone(timedelta(hours=2))
-    assert ClientService.client_since_date(
-        created_at_utc, local_tz=local_tz
-    ) == date(2026, 1, 15)
+    assert ClientService.client_since_date(created_at_utc, local_tz=local_tz) == date(
+        2026, 1, 15
+    )
 
 
 @pytest.mark.parametrize("field", ["birth_date", "consent_date"])
-def test_dates_in_the_future_are_rejected(client_service: ClientService, field: str) -> None:
+def test_dates_in_the_future_are_rejected(
+    client_service: ClientService, field: str
+) -> None:
     tomorrow = date.today() + timedelta(days=1)
 
     with pytest.raises(ValidationError, match="Zukunft"):
-        client_service.create_client(first_name="Anna", last_name="Muster", **{field: tomorrow})
+        client_service.create_client(
+            first_name="Anna", last_name="Muster", **{field: tomorrow}
+        )
 
     client = client_service.create_client(first_name="Anna", last_name="Muster")
     with pytest.raises(ValidationError, match="Zukunft"):

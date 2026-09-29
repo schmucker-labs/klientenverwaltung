@@ -225,7 +225,9 @@ def ask_set_up_backup_folder(*, parent: QWidget | None = None) -> bool:
         "weg.\n\nBitte einen Sicherungsordner auf einem anderen Datenträger "
         "wählen, zum Beispiel auf einer zweiten Festplatte."
     )
-    set_up_button = box.addButton("Jetzt einrichten…", QMessageBox.ButtonRole.AcceptRole)
+    set_up_button = box.addButton(
+        "Jetzt einrichten…", QMessageBox.ButtonRole.AcceptRole
+    )
     box.addButton("Später", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(set_up_button)
     _exec_in_front(box)
@@ -273,9 +275,7 @@ def ask_use_existing_file(
     return box.clickedButton() is yes_button
 
 
-def ask_create_treatment_type(
-    message: str, *, parent: QWidget | None = None
-) -> bool:
+def ask_create_treatment_type(message: str, *, parent: QWidget | None = None) -> bool:
     """Shown from "Neue Sitzung" when there is no active treatment type to
     select (Auftrag D1); "Behandlungsart anlegen" opens the existing
     treatment-type management, "Abbrechen" backs out of creating a session.
@@ -303,7 +303,9 @@ def ask_delete_now_unused_media(
     remain visible in the Medienübersicht (Auftrag C2), at 0x if kept.
     """
     count_phrase = (
-        "Eine Mediendatei wird" if len(names) == 1 else f"{len(names)} Mediendateien werden"
+        "Eine Mediendatei wird"
+        if len(names) == 1
+        else f"{len(names)} Mediendateien werden"
     )
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)

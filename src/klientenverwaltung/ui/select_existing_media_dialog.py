@@ -31,13 +31,16 @@ _NAME_COLUMN = 0
 
 
 class SelectExistingMediaDialog(QDialog):
-    """"Aus vorhandenen Medien …" (Auftrag C2) - links files already on
+    """ "Aus vorhandenen Medien …" (Auftrag C2) - links files already on
     the drive to a session without copying anything. Lists every media
     file not yet linked to this particular session.
     """
 
     def __init__(
-        self, media_service: MediaService, session_id: int, parent: QWidget | None = None
+        self,
+        media_service: MediaService,
+        session_id: int,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._media_service = media_service
@@ -67,10 +70,14 @@ class SelectExistingMediaDialog(QDialog):
             self._media_service.list_unlinked_media_for_session(session_id)
         )
         header = self._table_view.horizontalHeader()
-        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES)
+        restored = restore_header_state(
+            header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             self._table_view.resizeColumnsToContents()
-        finalize_column_widths(header, self._table_model.columnCount(), _NAME_COLUMN, restored)
+        finalize_column_widths(
+            header, self._table_model.columnCount(), _NAME_COLUMN, restored
+        )
         header.sectionResized.connect(self._save_header_state)
         self._table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
@@ -101,7 +108,9 @@ class SelectExistingMediaDialog(QDialog):
 
     def _save_header_state(self) -> None:
         save_header_state(
-            self._table_view.horizontalHeader(), _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+            self._table_view.horizontalHeader(),
+            _HEADER_STATE_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def done(self, result: int) -> None:

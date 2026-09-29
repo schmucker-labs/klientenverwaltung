@@ -79,7 +79,9 @@ def test_delete_gate_follows_the_selected_entry_across_a_header_sort(
         if dialog._table_model.entry_at(row).media_id == unused_outcome.media.id:
             dialog._table_view.selectRow(row)
     dialog._update_button_states()
-    assert dialog._delete_button.isEnabled() is True  # sanity: the unused file is selected
+    assert (
+        dialog._delete_button.isEnabled() is True
+    )  # sanity: the unused file is selected
 
     # Re-sort by a different order - the used file must not silently end
     # up "selected" in the unused file's place.

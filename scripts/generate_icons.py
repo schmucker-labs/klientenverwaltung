@@ -35,9 +35,7 @@ _ICONS_DIR = _REPO_ROOT / "src/klientenverwaltung/ui/icons"
 _MONOCHROME_ICON_BASE_SIZE = 64
 
 
-def _render_pixmap(
-    renderer: QSvgRenderer, size: QSize | None = None
-) -> QPixmap:
+def _render_pixmap(renderer: QSvgRenderer, size: QSize | None = None) -> QPixmap:
     target_size = size or renderer.defaultSize()
     pixmap = QPixmap(target_size)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -81,7 +79,9 @@ def _write_ico(frames: list[tuple[int, bytes]], output_path: Path) -> None:
     output_path.write_bytes(header + directory + images)
 
 
-def _load_renderer(svg_path: Path, substitutions: dict[str, str] | None = None) -> QSvgRenderer:
+def _load_renderer(
+    svg_path: Path, substitutions: dict[str, str] | None = None
+) -> QSvgRenderer:
     if substitutions:
         svg_source = svg_path.read_text(encoding="utf-8")
         for placeholder, value in substitutions.items():
@@ -121,9 +121,7 @@ def main() -> None:
     QApplication(sys.argv)  # QPixmap/QPainter need an application instance
 
     _generate_app_icon()
-    _generate_png(
-        "logo", "logo.png", size=QSize(_LOGO_BASE_SIZE, _LOGO_BASE_SIZE)
-    )
+    _generate_png("logo", "logo.png", size=QSize(_LOGO_BASE_SIZE, _LOGO_BASE_SIZE))
     _generate_png(
         "splash", "splash.png", substitutions={"__AUTHOR_SHORT__": AUTHOR_SHORT}
     )

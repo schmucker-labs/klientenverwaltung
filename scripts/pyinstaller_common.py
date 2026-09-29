@@ -55,9 +55,9 @@ HIDDEN_IMPORTS = [
 
 
 def build_version_info() -> VSVersionInfo:
-    version_tuple = (tuple(int(part) for part in __version__.split(".")) + (0, 0, 0, 0))[
-        :4
-    ]
+    version_tuple = (
+        tuple(int(part) for part in __version__.split(".")) + (0, 0, 0, 0)
+    )[:4]
     return VSVersionInfo(
         ffi=FixedFileInfo(filevers=version_tuple, prodvers=version_tuple),
         kids=[

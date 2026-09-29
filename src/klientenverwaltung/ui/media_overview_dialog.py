@@ -45,7 +45,9 @@ class MediaOverviewDialog(QDialog):
     medien folder and the database (a missing file, an untracked file).
     """
 
-    def __init__(self, media_service: MediaService, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, media_service: MediaService, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._media_service = media_service
         self._entries: list[MediaOverviewEntry] = []
@@ -76,11 +78,15 @@ class MediaOverviewDialog(QDialog):
         self._table_model.set_entries(self._entries)
 
         header = self._table_view.horizontalHeader()
-        restored = restore_header_state(header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES)
+        restored = restore_header_state(
+            header, _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             self._table_view.resizeColumnsToContents()
             self._table_view.sortByColumn(USED_COLUMN, Qt.SortOrder.AscendingOrder)
-        finalize_column_widths(header, self._table_model.columnCount(), _NAME_COLUMN, restored)
+        finalize_column_widths(
+            header, self._table_model.columnCount(), _NAME_COLUMN, restored
+        )
         header.sectionResized.connect(self._save_header_state)
         header.sortIndicatorChanged.connect(self._save_header_state)
         self._table_view.selectionModel().selectionChanged.connect(
@@ -141,7 +147,9 @@ class MediaOverviewDialog(QDialog):
 
     def _save_header_state(self) -> None:
         save_header_state(
-            self._table_view.horizontalHeader(), _HEADER_STATE_SETTINGS_KEY, COLUMN_TITLES
+            self._table_view.horizontalHeader(),
+            _HEADER_STATE_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def _apply_current_sort(self) -> None:
@@ -182,7 +190,9 @@ class MediaOverviewDialog(QDialog):
     def _update_button_states(self) -> None:
         single = self._single_selected_entry()
         self._open_button.setEnabled(single is not None)
-        self._rename_button.setEnabled(single is not None and single.media_id is not None)
+        self._rename_button.setEnabled(
+            single is not None and single.media_id is not None
+        )
 
         entries = self._selected_entries()
         if not entries:
@@ -251,7 +261,9 @@ class MediaOverviewDialog(QDialog):
         if not entries or any(e.usage_count > 0 for e in entries):
             return
         total_size = format_size_bytes(sum(entry.size_bytes for entry in entries))
-        count_phrase = "1 Datei wird" if len(entries) == 1 else f"{len(entries)} Dateien werden"
+        count_phrase = (
+            "1 Datei wird" if len(entries) == 1 else f"{len(entries)} Dateien werden"
+        )
         confirmed = ask_confirm_delete(
             f"{count_phrase} ({total_size}) endgültig von der Datenplatte gelöscht: "
             f"{summarize_names([display_name(entry) for entry in entries])}.",

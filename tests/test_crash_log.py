@@ -54,7 +54,9 @@ def test_uncaught_service_error_is_shown_as_a_plain_message_not_a_crash(
     a list was loading) already carries a German message for the user and
     leaves nothing half-done - it must not end the program."""
     shown: list[str] = []
-    monkeypatch.setattr(main, "show_error", lambda message, **kwargs: shown.append(message))
+    monkeypatch.setattr(
+        main, "show_error", lambda message, **kwargs: shown.append(message)
+    )
     error = DataUnavailableError("Die Verbindung zur Datenplatte wurde unterbrochen.")
 
     main._log_and_show_crash(type(error), error, None)

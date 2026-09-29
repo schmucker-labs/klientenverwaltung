@@ -268,7 +268,9 @@ class TestHasPendingMigrations:
 
 def _stamp_unknown_future_revision(engine: object) -> None:
     with engine.begin() as connection:  # type: ignore[attr-defined]
-        connection.execute(text("UPDATE alembic_version SET version_num = 'ffff0000ffff'"))
+        connection.execute(
+            text("UPDATE alembic_version SET version_num = 'ffff0000ffff'")
+        )
 
 
 class TestSchemaFromANewerProgramVersion:
@@ -351,7 +353,9 @@ class TestRekeyDatabaseFile:
         db_path = drive / storage.DB_FILENAME
 
         with pytest.raises(storage.IncorrectPasswordError):
-            storage.rekey_database_file(db_path, "falsches-passwort-1", "neues-passwort-123")
+            storage.rekey_database_file(
+                db_path, "falsches-passwort-1", "neues-passwort-123"
+            )
 
         storage.verify_database_file(db_path, "altes-passwort-1234")
 
@@ -416,7 +420,7 @@ class TestOpenDatabase:
             "Sommer@Wiese2026",
             "a:b@c:d@e12345678",
             "Sommer%41Wiese2026",
-            'mit"Anführungs\'zeichen',
+            "mit\"Anführungs'zeichen",
             "mein?pass#wort/12:",
             "Grüße-aus-Köln-ß",
         ],
@@ -431,7 +435,9 @@ class TestOpenDatabase:
         engine = storage.open_database(drive / storage.DB_FILENAME, password)
         engine.dispose()
 
-    def test_percent_escape_in_password_is_not_url_decoded(self, tmp_path: Path) -> None:
+    def test_percent_escape_in_password_is_not_url_decoded(
+        self, tmp_path: Path
+    ) -> None:
         drive = tmp_path / "drive"
         drive.mkdir()
         storage.set_up_data_drive(drive, "Sommer%41Wiese2026").dispose()
@@ -540,7 +546,9 @@ class TestRecordedDataDriveIdentity:
 
         assert exc_info.value.drive_root == other_drive
 
-    def test_the_recorded_drive_wins_over_another_data_drive(self, tmp_path: Path) -> None:
+    def test_the_recorded_drive_wins_over_another_data_drive(
+        self, tmp_path: Path
+    ) -> None:
         own_drive = _make_drive_with_identifier(tmp_path / "own")
         other_drive = _make_drive_with_identifier(tmp_path / "other")
 

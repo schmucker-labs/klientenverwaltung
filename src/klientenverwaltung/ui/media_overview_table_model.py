@@ -88,7 +88,9 @@ class MediaOverviewTableModel(QAbstractTableModel):
         if column == 2:
             return format_size_bytes(entry.size_bytes)
         if column == 3:
-            return entry.created_at.strftime("%d.%m.%Y %H:%M") if entry.created_at else ""
+            return (
+                entry.created_at.strftime("%d.%m.%Y %H:%M") if entry.created_at else ""
+            )
         if column == USED_COLUMN:
             return f"{entry.usage_count}×"
         return None

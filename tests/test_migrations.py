@@ -100,7 +100,9 @@ def test_table_rebuild_during_a_migration_keeps_dependent_rows(
             )
             session.add_all([treatment_session, media])
             session.flush()
-            session.add(SessionMedia(session_id=treatment_session.id, media_id=media.id))
+            session.add(
+                SessionMedia(session_id=treatment_session.id, media_id=media.id)
+            )
             session.commit()
 
         bundle_copy = tmp_path / "bundle"
@@ -120,7 +122,9 @@ def test_table_rebuild_during_a_migration_keeps_dependent_rows(
 
         with Session(engine) as session:
             assert session.scalar(select(func.count()).select_from(Client)) == 1
-            assert session.scalar(select(func.count()).select_from(TreatmentSession)) == 1
+            assert (
+                session.scalar(select(func.count()).select_from(TreatmentSession)) == 1
+            )
             assert session.scalar(select(func.count()).select_from(SessionMedia)) == 1
     finally:
         engine.dispose()

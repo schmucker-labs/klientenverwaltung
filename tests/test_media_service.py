@@ -74,10 +74,9 @@ def test_duplicate_content_is_linked_not_recopied(
     second = media_service.import_file(
         session_b_id,
         source_b,
-        confirm_duplicate=lambda original_filename: confirmations.append(
-            original_filename
-        )
-        or True,
+        confirm_duplicate=lambda original_filename: (
+            confirmations.append(original_filename) or True
+        ),
     )
     assert second.status == "linked_existing"
     assert second.media.id == first.media.id
@@ -453,7 +452,10 @@ def test_find_now_unused_excludes_media_still_linked_elsewhere(
 
 
 def test_deleting_a_session_leaves_its_only_medium_findable_as_unused(
-    media_service: MediaService, treatment_session_service, treatment_session: TreatmentSession, tmp_path: Path
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
 ) -> None:
     source = _make_source_file(tmp_path, "foto.jpg", b"a" * 5)
     outcome = media_service.import_file(treatment_session.id, source)
@@ -600,8 +602,12 @@ def test_list_unlinked_media_for_session_excludes_already_linked_media(
 
 
 def test_list_unlinked_media_for_session_filters_by_search(
-    media_service: MediaService, treatment_session_service, treatment_type: TreatmentType,
-    client: Client, treatment_session: TreatmentSession, tmp_path: Path,
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
 ) -> None:
     other_session = treatment_session_service.create_session(
         client_id=client.id,
@@ -609,17 +615,27 @@ def test_list_unlinked_media_for_session_filters_by_search(
         date=datetime(2026, 3, 1, 9, 0),
         duration_minutes=30,
     )
-    media_service.import_file(treatment_session.id, _make_source_file(tmp_path, "urlaub.jpg", b"a" * 5))
-    media_service.import_file(treatment_session.id, _make_source_file(tmp_path, "arbeit.jpg", b"b" * 5))
+    media_service.import_file(
+        treatment_session.id, _make_source_file(tmp_path, "urlaub.jpg", b"a" * 5)
+    )
+    media_service.import_file(
+        treatment_session.id, _make_source_file(tmp_path, "arbeit.jpg", b"b" * 5)
+    )
 
-    results = media_service.list_unlinked_media_for_session(other_session.id, search="urla")
+    results = media_service.list_unlinked_media_for_session(
+        other_session.id, search="urla"
+    )
 
     assert [e.original_filename for e in results] == ["urlaub.jpg"]
 
 
 def test_list_unlinked_media_for_session_search_ignores_umlaut_case(
-    media_service: MediaService, treatment_session_service, treatment_type: TreatmentType,
-    client: Client, treatment_session: TreatmentSession, tmp_path: Path,
+    media_service: MediaService,
+    treatment_session_service,
+    treatment_type: TreatmentType,
+    client: Client,
+    treatment_session: TreatmentSession,
+    tmp_path: Path,
 ) -> None:
     other_session = treatment_session_service.create_session(
         client_id=client.id,
@@ -627,9 +643,13 @@ def test_list_unlinked_media_for_session_search_ignores_umlaut_case(
         date=datetime(2026, 3, 1, 9, 0),
         duration_minutes=30,
     )
-    media_service.import_file(treatment_session.id, _make_source_file(tmp_path, "Übung.mp3", b"a" * 5))
+    media_service.import_file(
+        treatment_session.id, _make_source_file(tmp_path, "Übung.mp3", b"a" * 5)
+    )
 
-    results = media_service.list_unlinked_media_for_session(other_session.id, search="übung")
+    results = media_service.list_unlinked_media_for_session(
+        other_session.id, search="übung"
+    )
 
     assert [e.original_filename for e in results] == ["Übung.mp3"]
 

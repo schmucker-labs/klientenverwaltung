@@ -146,10 +146,14 @@ class MediaDialog(QDialog):
         self._reload_media()
 
         header = self._table_view.horizontalHeader()
-        restored = restore_header_state(header, _TABLE_HEADER_SETTINGS_KEY, COLUMN_TITLES)
+        restored = restore_header_state(
+            header, _TABLE_HEADER_SETTINGS_KEY, COLUMN_TITLES
+        )
         if not restored:
             self._table_view.resizeColumnsToContents()
-        finalize_column_widths(header, self._table_model.columnCount(), _NAME_COLUMN, restored)
+        finalize_column_widths(
+            header, self._table_model.columnCount(), _NAME_COLUMN, restored
+        )
         header.sectionResized.connect(self._save_table_header_state)
         self._table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
@@ -157,7 +161,9 @@ class MediaDialog(QDialog):
 
     def _save_table_header_state(self) -> None:
         save_header_state(
-            self._table_view.horizontalHeader(), _TABLE_HEADER_SETTINGS_KEY, COLUMN_TITLES
+            self._table_view.horizontalHeader(),
+            _TABLE_HEADER_SETTINGS_KEY,
+            COLUMN_TITLES,
         )
 
     def done(self, result: int) -> None:
@@ -190,7 +196,9 @@ class MediaDialog(QDialog):
         self._start_import(Path(path_str))
 
     def _on_select_existing_clicked(self) -> None:
-        dialog = SelectExistingMediaDialog(self._media_service, self._session_id, parent=self)
+        dialog = SelectExistingMediaDialog(
+            self._media_service, self._session_id, parent=self
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload_media()
 
@@ -200,7 +208,11 @@ class MediaDialog(QDialog):
             return
         usage_count = self._media_service.count_sessions_for_media(entry.media_id)
         dialog = RenameMediaDialog(
-            self._media_service, entry.media_id, entry.original_filename, usage_count, parent=self
+            self._media_service,
+            entry.media_id,
+            entry.original_filename,
+            usage_count,
+            parent=self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload_media()
@@ -210,7 +222,9 @@ class MediaDialog(QDialog):
         self._set_busy(True)
         self._loading_dialog = LoadingDialog(self)
         self._thread = QThread(self)
-        self._worker = MediaImportWorker(self._media_service, self._session_id, source_path)
+        self._worker = MediaImportWorker(
+            self._media_service, self._session_id, source_path
+        )
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self._loading_dialog.set_progress)
@@ -278,9 +292,7 @@ class MediaDialog(QDialog):
                 parent=self,
             )
         elif outcome.status == "already_linked":
-            show_info(
-                "Diese Datei ist dieser Sitzung bereits zugeordnet.", parent=self
-            )
+            show_info("Diese Datei ist dieser Sitzung bereits zugeordnet.", parent=self)
 
     def _on_import_failed(self, message: str) -> None:
         assert self._loading_dialog is not None
@@ -322,5 +334,7 @@ class MediaDialog(QDialog):
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
-        offer_to_delete_now_unused_media(self._media_service, [entry.media_id], parent=self)
+        offer_to_delete_now_unused_media(
+            self._media_service, [entry.media_id], parent=self
+        )
         self._reload_media()

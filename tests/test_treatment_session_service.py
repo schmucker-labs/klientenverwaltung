@@ -325,7 +325,9 @@ def test_session_entries_carry_the_treatment_type_name(
         duration_minutes=treatment_session.duration_minutes,
     )
     assert updated.treatment_type_name == "Reiki"
-    assert treatment_session_service.get_session(updated.id).treatment_type_name == "Reiki"
+    assert (
+        treatment_session_service.get_session(updated.id).treatment_type_name == "Reiki"
+    )
 
 
 def test_list_sessions_for_client_orders_newest_first(

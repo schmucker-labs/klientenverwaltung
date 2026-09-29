@@ -22,7 +22,9 @@ class MediaImportWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, media_service: MediaService, session_id: int, source_path: Path) -> None:
+    def __init__(
+        self, media_service: MediaService, session_id: int, source_path: Path
+    ) -> None:
         super().__init__()
         self._media_service = media_service
         self._session_id = session_id

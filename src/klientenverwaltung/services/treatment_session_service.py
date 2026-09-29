@@ -91,9 +91,7 @@ class _VisibleTextExtractor(HTMLParser):
         self._skip_depth = 0
         self._chunks: list[str] = []
 
-    def handle_starttag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in ("script", "style"):
             self._skip_depth += 1
 

@@ -185,5 +185,7 @@ def test_treatment_type_names_are_unique_regardless_of_case(
     with pytest.raises(ConflictError):
         treatment_type_service.update_treatment_type(other.id, name="MEDITATION")
     # renaming a type to a different casing of its own name stays allowed
-    renamed = treatment_type_service.update_treatment_type(existing.id, name="MEDITATION")
+    renamed = treatment_type_service.update_treatment_type(
+        existing.id, name="MEDITATION"
+    )
     assert renamed.name == "MEDITATION"

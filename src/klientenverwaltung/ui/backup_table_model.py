@@ -68,7 +68,11 @@ class BackupTableModel(QAbstractTableModel):
         if column == 1:
             return entry.path.name
         if column == 2:
-            return format_size_bytes(entry.size_bytes) if entry.size_bytes is not None else ""
+            return (
+                format_size_bytes(entry.size_bytes)
+                if entry.size_bytes is not None
+                else ""
+            )
         if column == 3:
             return ORIGIN_LABELS[entry.origin]
         return None

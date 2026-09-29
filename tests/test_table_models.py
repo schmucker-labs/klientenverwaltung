@@ -36,9 +36,7 @@ def test_header_data_out_of_range_section_returns_none(
     """
     model = model_cls()
 
-    assert (
-        model.headerData(out_of_range_section, Qt.Orientation.Horizontal) is None
-    )
+    assert model.headerData(out_of_range_section, Qt.Orientation.Horizontal) is None
 
 
 @pytest.fixture
@@ -104,7 +102,12 @@ def test_client_names_sort_in_german_order(qapp: QApplication) -> None:
     """Umlauts sort with their base letter (Ö with O), not after Z."""
     model = ClientTableModel()
     model.set_entries(
-        [_entry(1, "Zimmer"), _entry(2, "Özdemir"), _entry(3, "Muster"), _entry(4, "Otto")]
+        [
+            _entry(1, "Zimmer"),
+            _entry(2, "Özdemir"),
+            _entry(3, "Muster"),
+            _entry(4, "Otto"),
+        ]
     )
 
     model.sort(1, Qt.SortOrder.AscendingOrder)

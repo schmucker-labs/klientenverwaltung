@@ -193,7 +193,9 @@ def _find_data_drive_among(
 
     found = _identifiers_of(candidate_roots, reader=reader, timeout=timeout)
     if expected_id is not None:
-        matching = [root for root, identifier in found.items() if identifier == expected_id]
+        matching = [
+            root for root, identifier in found.items() if identifier == expected_id
+        ]
         if len(matching) == 1:
             return matching[0]
     candidates = list(found)

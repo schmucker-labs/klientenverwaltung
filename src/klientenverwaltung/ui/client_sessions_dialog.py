@@ -77,7 +77,9 @@ class ClientSessionsDialog(QDialog):
         sessions = self._services.treatment_sessions.list_sessions_for_client(
             self._client_id
         )
-        self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
+        self._session_table_model.set_sessions(
+            sessions, self._media_counts_for(sessions)
+        )
         self._session_table_view = QTableView(self)
         self._session_table_view.setModel(self._session_table_model)
         self._session_table_view.setSelectionBehavior(
@@ -165,7 +167,9 @@ class ClientSessionsDialog(QDialog):
         sessions = self._services.treatment_sessions.list_sessions_for_client(
             self._client_id
         )
-        self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
+        self._session_table_model.set_sessions(
+            sessions, self._media_counts_for(sessions)
+        )
         self._update_button_states()
 
     def _selected_session(self) -> SessionEntry | None:
@@ -287,5 +291,7 @@ class ClientSessionsDialog(QDialog):
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
-        offer_to_delete_now_unused_media(self._services.media, candidate_media_ids, parent=self)
+        offer_to_delete_now_unused_media(
+            self._services.media, candidate_media_ids, parent=self
+        )
         self._reload_sessions()

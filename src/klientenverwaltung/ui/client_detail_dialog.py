@@ -266,9 +266,7 @@ class ClientDetailDialog(QDialog):
         # TreatmentSessionRepository.get_last_session_dates()/
         # get_upcoming_sessions() via this one service method), so the two
         # views can never disagree about what counts as "last" vs "next".
-        summary = self._services.treatment_sessions.get_session_summary(
-            self._client_id
-        )
+        summary = self._services.treatment_sessions.get_session_summary(self._client_id)
         self._sessions_last_date_label.setText(
             f"Letzte Sitzung: {summary.last_session_date.strftime('%d.%m.%Y')}"
             if summary.last_session_date is not None

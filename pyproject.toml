@@ -28,6 +28,11 @@ dev = [
     "ruff>=0.16.8",
 ]
 
+[tool.ruff]
+# Historical implementation plans: their code snippets document how a
+# feature was planned at the time, they are not maintained code.
+extend-exclude = ["docs/superpowers"]
+
 [tool.ruff.lint]
 ignore = [
     # Lokale Desktop-Anwendung fuer eine Praxis an einem Ort: Termine und

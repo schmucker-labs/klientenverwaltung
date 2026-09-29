@@ -265,9 +265,7 @@ class ReportDialog(QDialog):
         scroll_content = QWidget(self)
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_layout.addWidget(
-            self._build_labeled_field("Bericht", self._report_edit)
-        )
+        scroll_layout.addWidget(self._build_labeled_field("Bericht", self._report_edit))
         scroll_layout.addWidget(
             self._build_labeled_field("Impulse", self._impulses_edit)
         )
@@ -307,9 +305,7 @@ class ReportDialog(QDialog):
         self._update_toolbar_state()
 
         QShortcut(QKeySequence("Ctrl+S"), self, activated=self._on_save_clicked)
-        QShortcut(
-            QKeySequence("Ctrl+Return"), self, activated=self._on_save_and_close
-        )
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_save_and_close)
         QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._on_save_and_close)
 
     def _build_toolbar(self) -> QWidget:

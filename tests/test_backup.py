@@ -366,7 +366,9 @@ class TestListRestorableBackups:
 
 class TestParseBackupTimestamp:
     def test_parses_the_suffix_of_a_same_second_collision(self, tmp_path: Path) -> None:
-        second_in_same_second = tmp_path / "klientenverwaltung_backup_20260101_120000_2.db"
+        second_in_same_second = (
+            tmp_path / "klientenverwaltung_backup_20260101_120000_2.db"
+        )
 
         assert backup.parse_backup_timestamp(second_in_same_second) == datetime(
             2026, 1, 1, 12, 0, 0
@@ -399,8 +401,12 @@ class TestBackUpIfChanged:
 
 
 class TestBackupFolderWarning:
-    def test_warns_about_a_folder_on_the_data_drive_itself(self, tmp_path: Path) -> None:
-        warning = backup.backup_folder_warning(tmp_path / "Sicherungen", tmp_path / "drive")
+    def test_warns_about_a_folder_on_the_data_drive_itself(
+        self, tmp_path: Path
+    ) -> None:
+        warning = backup.backup_folder_warning(
+            tmp_path / "Sicherungen", tmp_path / "drive"
+        )
 
         assert warning is not None
         assert "Datenplatte" in warning

@@ -38,7 +38,12 @@ def test_ui_never_imports_the_orm_models(path: Path) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    sorted([*(_PACKAGE / "services").glob("*.py"), *(_PACKAGE / "repositories").glob("*.py")]),
+    sorted(
+        [
+            *(_PACKAGE / "services").glob("*.py"),
+            *(_PACKAGE / "repositories").glob("*.py"),
+        ]
+    ),
     ids=lambda path: f"{path.parent.name}/{path.name}",
 )
 def test_services_and_repositories_know_no_qt(path: Path) -> None:

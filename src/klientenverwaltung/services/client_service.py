@@ -202,7 +202,9 @@ class ClientService:
     ) -> list[ClientDetails]:
         with self._session_factory() as session:
             clients = ClientRepository(session).list(include_archived=include_archived)
-            return [_client_details(client) for client in _filter_by_search(clients, search)]
+            return [
+                _client_details(client) for client in _filter_by_search(clients, search)
+            ]
 
     @database_errors_as(_LOAD_ERROR)
     def list_clients_with_last_session(
@@ -334,7 +336,9 @@ class ClientService:
         return _normalize_casing(text) if text else text
 
     @staticmethod
-    def client_since_date(created_at: datetime, *, local_tz: tzinfo | None = None) -> date:
+    def client_since_date(
+        created_at: datetime, *, local_tz: tzinfo | None = None
+    ) -> date:
         """The local calendar date of a client's created_at timestamp.
 
         created_at is stored as a naive UTC timestamp (SQLite's

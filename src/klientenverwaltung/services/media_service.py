@@ -193,7 +193,9 @@ def _process_file(
 
 
 class MediaService:
-    def __init__(self, session_factory: sessionmaker[Session], drive_root: Path) -> None:
+    def __init__(
+        self, session_factory: sessionmaker[Session], drive_root: Path
+    ) -> None:
         self._session_factory = session_factory
         self._drive_root = drive_root
         self._media_dir = drive_root / MEDIA_FOLDER_NAME
@@ -221,7 +223,9 @@ class MediaService:
 
         with self._session_factory() as session:
             if TreatmentSessionRepository(session).get_by_id(session_id) is None:
-                raise NotFoundError(f"Sitzung mit ID {session_id} wurde nicht gefunden.")
+                raise NotFoundError(
+                    f"Sitzung mit ID {session_id} wurde nicht gefunden."
+                )
 
             media_repo = MediaRepository(session)
             same_size_candidates = media_repo.list_by_size(size_bytes)
@@ -244,16 +248,16 @@ class MediaService:
                 if match is not None:
                     if media_repo.is_linked(session_id, match.id):
                         return ImportOutcome(
-                            "already_linked", _stored_media(match), match.original_filename
+                            "already_linked",
+                            _stored_media(match),
+                            match.original_filename,
                         )
                     if confirm_duplicate is None or not confirm_duplicate(
                         match.original_filename
                     ):
                         return ImportOutcome("cancelled", None, match.original_filename)
                     media_repo.link(session_id, match.id)
-                    with transaction(
-                        session, "Datei konnte nicht zugeordnet werden."
-                    ):
+                    with transaction(session, "Datei konnte nicht zugeordnet werden."):
                         pass
                     return ImportOutcome(
                         "linked_existing", _stored_media(match), match.original_filename
@@ -333,9 +337,7 @@ class MediaService:
         with self._session_factory() as session:
             repo = MediaRepository(session)
             if not repo.unlink(session_id, media_id):
-                raise NotFoundError(
-                    "Diese Datei ist dieser Sitzung nicht zugeordnet."
-                )
+                raise NotFoundError("Diese Datei ist dieser Sitzung nicht zugeordnet.")
             with transaction(session, "Verknüpfung konnte nicht entfernt werden."):
                 pass
 

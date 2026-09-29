@@ -133,7 +133,9 @@ def isolated_qsettings(qapp: QApplication, tmp_path: Path) -> Iterator[None]:
     neither sees saved window/column state nor leaves any behind."""
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
     QSettings.setPath(
-        QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "qsettings")
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        str(tmp_path / "qsettings"),
     )
     yield
     QSettings.setDefaultFormat(QSettings.Format.NativeFormat)

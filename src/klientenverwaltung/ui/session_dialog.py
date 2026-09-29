@@ -30,7 +30,7 @@ _GEOMETRY_SETTINGS_KEY = "session_dialog/geometry"
 
 
 def _default_start_time() -> datetime:
-    """"Now", rounded down to the quarter hour - sessions usually start on
+    """ "Now", rounded down to the quarter hour - sessions usually start on
     one, and the value then carries no seconds the HH:mm display would
     hide (the service stores whole minutes regardless)."""
     now = datetime.now()
