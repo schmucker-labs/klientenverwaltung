@@ -14,11 +14,13 @@ class TreatmentSession(Base):
     __tablename__ = "session"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("client.id", ondelete="CASCADE"))
+    client_id: Mapped[int] = mapped_column(
+        ForeignKey("client.id", ondelete="CASCADE"), index=True
+    )
     treatment_type_id: Mapped[int] = mapped_column(
         ForeignKey("treatment_type.id", ondelete="RESTRICT")
     )
-    date: Mapped[datetime]
+    date: Mapped[datetime] = mapped_column(index=True)
     duration_minutes: Mapped[int]
     report: Mapped[str | None] = mapped_column(Text)
     impulses: Mapped[str | None] = mapped_column(Text)

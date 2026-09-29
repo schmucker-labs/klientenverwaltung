@@ -18,12 +18,14 @@ from klientenverwaltung.services import (
     TreatmentSessionService,
     TreatmentTypeService,
 )
+from klientenverwaltung.services.treatment_session_service import (
+    MAX_SESSION_DURATION_MINUTES,
+)
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _DEFAULT_DURATION_MINUTES = 60
 _MIN_DURATION_MINUTES = 5
-_MAX_DURATION_MINUTES = 480
 _GEOMETRY_SETTINGS_KEY = "session_dialog/geometry"
 
 
@@ -70,7 +72,9 @@ class SessionDialog(QDialog):
             self._treatment_type_combo.addItem(treatment_type.name, treatment_type.id)
 
         self._duration_spinbox = QSpinBox(self)
-        self._duration_spinbox.setRange(_MIN_DURATION_MINUTES, _MAX_DURATION_MINUTES)
+        self._duration_spinbox.setRange(
+            _MIN_DURATION_MINUTES, MAX_SESSION_DURATION_MINUTES
+        )
         self._duration_spinbox.setValue(_DEFAULT_DURATION_MINUTES)
         self._duration_spinbox.setSuffix(" Min.")
 

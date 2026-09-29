@@ -35,8 +35,10 @@ class SessionMedia(Base):
     session_id: Mapped[int] = mapped_column(
         ForeignKey("session.id", ondelete="CASCADE"), primary_key=True
     )
+    # Indexed on its own: the primary key (session_id, media_id) cannot
+    # serve lookups by media alone (usage counts, the RESTRICT check).
     media_id: Mapped[int] = mapped_column(
-        ForeignKey("media.id", ondelete="RESTRICT"), primary_key=True
+        ForeignKey("media.id", ondelete="RESTRICT"), primary_key=True, index=True
     )
     added_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), default=datetime.now

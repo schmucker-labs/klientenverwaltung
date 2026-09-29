@@ -13,6 +13,12 @@ def _has_content(column: InstrumentedAttribute[str | None]) -> ColumnElement[boo
     return and_(column.is_not(None), column != "")
 
 
+def _any_content() -> ColumnElement[bool]:
+    return or_(
+        _has_content(TreatmentSession.report), _has_content(TreatmentSession.impulses)
+    )
+
+
 class TreatmentSessionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -31,6 +37,20 @@ class TreatmentSessionRepository:
     def count_for_treatment_type(self, treatment_type_id: int) -> int:
         stmt = select(func.count(TreatmentSession.id)).where(
             TreatmentSession.treatment_type_id == treatment_type_id
+        )
+        return self._session.scalar(stmt) or 0
+
+    def count_for_client(self, client_id: int) -> int:
+        stmt = select(func.count(TreatmentSession.id)).where(
+            TreatmentSession.client_id == client_id
+        )
+        return self._session.scalar(stmt) or 0
+
+    def count_with_content_for_client(self, client_id: int) -> int:
+        """Same filter as list_with_content_for_client(), without loading
+        every report's HTML just to count it."""
+        stmt = select(func.count(TreatmentSession.id)).where(
+            TreatmentSession.client_id == client_id, _any_content()
         )
         return self._session.scalar(stmt) or 0
 
@@ -59,20 +79,19 @@ class TreatmentSessionRepository:
         """
         stmt = (
             select(TreatmentSession)
-            .where(
-                TreatmentSession.client_id == client_id,
-                or_(
-                    _has_content(TreatmentSession.report),
-                    _has_content(TreatmentSession.impulses),
-                ),
-            )
+            .where(TreatmentSession.client_id == client_id, _any_content())
             .options(joinedload(TreatmentSession.treatment_type))
             .order_by(TreatmentSession.date.desc(), TreatmentSession.id.desc())
         )
         return list(self._session.scalars(stmt))
 
     def find_overlapping(
-        self, *, start: datetime, end: datetime, exclude_session_id: int | None = None
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        earliest_start: datetime,
+        exclude_session_id: int | None = None,
     ) -> TreatmentSession | None:
         """First other session whose time range overlaps [start, end).
 
@@ -85,10 +104,14 @@ class TreatmentSessionRepository:
         Overlap is checked across all clients, not just the one being
         booked: this is a single-practitioner business, so the same person
         cannot conduct two sessions at once regardless of who they are with.
+
+        earliest_start bounds the search: a session starting at or before it
+        is over before `start` (the caller derives it from the longest
+        allowed duration), so the query never loads the whole history.
         """
         stmt = (
             select(TreatmentSession)
-            .where(TreatmentSession.date < end)
+            .where(TreatmentSession.date < end, TreatmentSession.date > earliest_start)
             .options(joinedload(TreatmentSession.client))
             .order_by(TreatmentSession.date)
         )

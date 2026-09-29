@@ -11,6 +11,7 @@ from klientenverwaltung.services import (
 )
 from klientenverwaltung.services.client_service import ClientService
 from klientenverwaltung.services.treatment_session_service import (
+    MAX_SESSION_DURATION_MINUTES,
     TreatmentSessionService,
 )
 from klientenverwaltung.services.treatment_type_service import TreatmentTypeService
@@ -589,3 +590,60 @@ def test_list_sessions_with_content_excludes_empty_string_content(
         db_session.commit()
 
     assert treatment_session_service.list_sessions_with_content(client.id) == []
+
+
+def test_create_session_rejects_a_duration_beyond_the_maximum(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    """The maximum bounds the overlap query (only sessions that start at
+    most that long before a new one can still overlap it)."""
+    with pytest.raises(ValidationError):
+        treatment_session_service.create_session(
+            client_id=client.id,
+            treatment_type_id=treatment_type.id,
+            date=datetime(2026, 3, 1, 9, 0),
+            duration_minutes=MAX_SESSION_DURATION_MINUTES + 1,
+        )
+
+
+def test_a_long_session_still_blocks_a_later_start_within_it(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 8, 0),
+        duration_minutes=MAX_SESSION_DURATION_MINUTES,
+    )
+
+    with pytest.raises(SessionOverlapError):
+        treatment_session_service.create_session(
+            client_id=client.id,
+            treatment_type_id=treatment_type.id,
+            date=datetime(2026, 3, 1, 15, 59),
+            duration_minutes=30,
+        )
+
+
+def test_session_counts_match_the_lists(
+    treatment_session_service: TreatmentSessionService,
+    treatment_session: TreatmentSession,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=60,
+    )
+    treatment_session_service.save_report(
+        treatment_session.id, report="<p>Bericht</p>", impulses=None
+    )
+
+    assert treatment_session_service.count_sessions_for_client(client.id) == 2
+    assert treatment_session_service.count_sessions_with_content(client.id) == 1

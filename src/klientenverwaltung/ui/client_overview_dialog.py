@@ -90,12 +90,12 @@ class ClientOverviewDialog(QDialog):
         self._update_buttons(client)
 
     def _update_buttons(self, client: ClientDetails) -> None:
-        sessions = self._services.treatment_sessions.list_sessions_for_client(client.id)
-        self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
-
-        report_count = len(
-            self._services.treatment_sessions.list_sessions_with_content(client.id)
+        sessions = self._services.treatment_sessions
+        self._sessions_button.setText(
+            f"Sitzungen ({sessions.count_sessions_for_client(client.id)})"
         )
+
+        report_count = sessions.count_sessions_with_content(client.id)
         self._report_button.setText(f"Berichte ({report_count})")
         self._report_button.setEnabled(report_count > 0)
         self._report_button.setToolTip(

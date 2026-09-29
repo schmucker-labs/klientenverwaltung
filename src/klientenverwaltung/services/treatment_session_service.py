@@ -21,6 +21,11 @@ from klientenverwaltung.services.transaction import database_errors_as, transact
 
 _LOAD_ERROR = "Die Sitzungen konnten nicht geladen werden."
 
+MAX_SESSION_DURATION_MINUTES = 480
+"""Longest session the program accepts (8 hours). Also bounds the overlap
+check: only sessions starting at most this long before a new one can
+overlap it."""
+
 
 @dataclass(frozen=True)
 class SessionSummary:
@@ -202,6 +207,19 @@ class TreatmentSessionService:
             ]
 
     @database_errors_as(_LOAD_ERROR)
+    def count_sessions_for_client(self, client_id: int) -> int:
+        with self._session_factory() as session:
+            return TreatmentSessionRepository(session).count_for_client(client_id)
+
+    @database_errors_as(_LOAD_ERROR)
+    def count_sessions_with_content(self, client_id: int) -> int:
+        """The "Berichte (n)" count - same rule as list_sessions_with_content()."""
+        with self._session_factory() as session:
+            return TreatmentSessionRepository(session).count_with_content_for_client(
+                client_id
+            )
+
+    @database_errors_as(_LOAD_ERROR)
     def get_session_summary(
         self, client_id: int, *, now: datetime | None = None
     ) -> SessionSummary:
@@ -302,6 +320,11 @@ class TreatmentSessionService:
     def _validate_duration(duration_minutes: int) -> None:
         if duration_minutes <= 0:
             raise ValidationError("Die Dauer muss größer als 0 Minuten sein.")
+        if duration_minutes > MAX_SESSION_DURATION_MINUTES:
+            raise ValidationError(
+                f"Die Dauer darf höchstens {MAX_SESSION_DURATION_MINUTES} Minuten "
+                "(8 Stunden) betragen."
+            )
 
     @staticmethod
     def _require_no_overlap(
@@ -313,7 +336,10 @@ class TreatmentSessionService:
     ) -> None:
         end = date + timedelta(minutes=duration_minutes)
         colliding = repo.find_overlapping(
-            start=date, end=end, exclude_session_id=exclude_session_id
+            start=date,
+            end=end,
+            earliest_start=date - timedelta(minutes=MAX_SESSION_DURATION_MINUTES),
+            exclude_session_id=exclude_session_id,
         )
         if colliding is not None:
             raise SessionOverlapError(

@@ -251,11 +251,11 @@ class ClientDetailDialog(QDialog):
             )
             self._sessions_next_date_label.setText("")
             return
-        sessions = self._services.treatment_sessions.list_sessions_for_client(
+        session_count = self._services.treatment_sessions.count_sessions_for_client(
             self._client_id
         )
         self._sessions_button.setEnabled(True)
-        self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
+        self._sessions_button.setText(f"Sitzungen ({session_count})")
         # Same past/future split as the client list's "Letzte
         # Sitzung"/"Nächster Termin" columns (both read
         # TreatmentSessionRepository.get_last_session_dates()/
