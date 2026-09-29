@@ -1,38 +1,33 @@
-from dataclasses import dataclass
-from pathlib import Path
-
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
-from klientenverwaltung.backup import parse_backup_timestamp
+from klientenverwaltung.backup import (
+    BackupOrigin,
+    RestorableBackup,
+    parse_backup_timestamp,
+)
+from klientenverwaltung.ui.media_table_model import format_size_bytes
 
 COLUMN_TITLES = ("Datum", "Dateiname", "Größe", "Herkunft")
 
-
-@dataclass(frozen=True)
-class BackupEntry:
-    path: Path
-    origin: str
-
-
-def _format_size(num_bytes: int) -> str:
-    if num_bytes >= 1024 * 1024:
-        return f"{num_bytes / (1024 * 1024):.1f} MB"
-    if num_bytes >= 1024:
-        return f"{num_bytes / 1024:.1f} KB"
-    return f"{num_bytes} Bytes"
+ORIGIN_LABELS: dict[BackupOrigin, str] = {
+    BackupOrigin.DATA_DRIVE: "Datenplatte",
+    BackupOrigin.BACKUP_FOLDER: "Sicherungsordner",
+    BackupOrigin.PRE_RESTORE_DATA_DRIVE: "Vor Wiederherstellung (Datenplatte)",
+    BackupOrigin.PRE_RESTORE_BACKUP_FOLDER: "Vor Wiederherstellung (Sicherungsordner)",
+}
 
 
 class BackupTableModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
-        self._entries: list[BackupEntry] = []
+        self._entries: list[RestorableBackup] = []
 
-    def set_entries(self, entries: list[BackupEntry]) -> None:
+    def set_entries(self, entries: list[RestorableBackup]) -> None:
         self.beginResetModel()
         self._entries = entries
         self.endResetModel()
 
-    def entry_at(self, row: int) -> BackupEntry:
+    def entry_at(self, row: int) -> RestorableBackup:
         return self._entries[row]
 
     def rowCount(self, parent: QModelIndex | None = None) -> int:
@@ -73,10 +68,7 @@ class BackupTableModel(QAbstractTableModel):
         if column == 1:
             return entry.path.name
         if column == 2:
-            try:
-                return _format_size(entry.path.stat().st_size)
-            except OSError:
-                return ""
+            return format_size_bytes(entry.size_bytes) if entry.size_bytes is not None else ""
         if column == 3:
-            return entry.origin
+            return ORIGIN_LABELS[entry.origin]
         return None

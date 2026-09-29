@@ -13,10 +13,7 @@ KIND_LABELS: dict[MediaKind, str] = {
 
 def format_size_bytes(size_bytes: int) -> str:
     """Human-readable size with a German comma decimal separator, e.g.
-    "1,4 GB" - distinct from backup_table_model._format_size (MB/KB only,
-    period separator), since backups stay in the low-MB range while media
-    files routinely reach several GB.
-    """
+    "1,4 GB" - used for media files and backups alike."""
     for suffix, factor in (("GB", 1024**3), ("MB", 1024**2), ("KB", 1024)):
         if size_bytes >= factor:
             return f"{size_bytes / factor:.1f}".replace(".", ",") + f" {suffix}"

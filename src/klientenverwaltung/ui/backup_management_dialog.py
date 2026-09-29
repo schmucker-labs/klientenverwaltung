@@ -17,17 +17,15 @@ from PySide6.QtWidgets import (
 from sqlalchemy import Engine
 
 from klientenverwaltung import backup, config, storage
-from klientenverwaltung.ui.backup_table_model import (
-    COLUMN_TITLES,
-    BackupEntry,
-    BackupTableModel,
-)
+from klientenverwaltung.backup import RestorableBackup
+from klientenverwaltung.ui.backup_table_model import COLUMN_TITLES, BackupTableModel
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     ask_confirm_restore,
     show_error,
     show_info,
 )
+from klientenverwaltung.ui.password_dialog import ask_for_password
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -36,8 +34,6 @@ from klientenverwaltung.ui.window_settings import (
     save_header_state,
 )
 
-_ORIGIN_CONFIGURED_FOLDER = "Sicherungsordner"
-_ORIGIN_DRIVE = "Datenplatte"
 _GEOMETRY_SETTINGS_KEY = "backup_management/geometry"
 _HEADER_STATE_SETTINGS_KEY = "backup_management/header_state"
 _FILENAME_COLUMN = 1
@@ -157,18 +153,11 @@ class BackupManagementDialog(QDialog):
         return config.get_backup_folder_path() or self._drive_root
 
     def _reload_table(self) -> None:
-        entries = [
-            BackupEntry(path=path, origin=_ORIGIN_DRIVE)
-            for path in backup.list_backups(self._drive_root)
-        ]
-        configured = config.get_backup_folder_path()
-        if configured is not None:
-            entries.extend(
-                BackupEntry(path=path, origin=_ORIGIN_CONFIGURED_FOLDER)
-                for path in backup.list_backups(configured)
+        self._table_model.set_entries(
+            backup.list_restorable_backups(
+                self._drive_root, config.get_backup_folder_path()
             )
-        entries.sort(key=lambda entry: entry.path.name, reverse=True)
-        self._table_model.set_entries(entries)
+        )
         self._update_button_states()
 
     def _update_button_states(self) -> None:
@@ -176,7 +165,7 @@ class BackupManagementDialog(QDialog):
         self._restore_button.setEnabled(has_selection)
         self._delete_button.setEnabled(has_selection)
 
-    def _selected_entry(self) -> BackupEntry | None:
+    def _selected_entry(self) -> RestorableBackup | None:
         rows = self._table_view.selectionModel().selectedRows()
         if len(rows) != 1:
             return None
@@ -254,14 +243,19 @@ class BackupManagementDialog(QDialog):
         label = timestamp.strftime("%d.%m.%Y %H:%M") if timestamp else entry.path.name
         confirmed = ask_confirm_restore(
             f"Die aktuelle Datenbank wird durch die Sicherung vom {label} "
-            "ersetzt. Die aktuelle Datenbank wird vorher zusätzlich "
-            "gesichert. Dieser Vorgang kann nicht rückgängig gemacht "
-            "werden. Die Anwendung wird danach beendet und muss "
-            "anschließend von Hand neu gestartet werden.",
+            "ersetzt. Die aktuelle Datenbank wird vorher gesichert und erscheint "
+            "danach in dieser Liste mit der Herkunft „Vor Wiederherstellung“ - "
+            "von dort lässt sie sich bei Bedarf zurückholen. Die Anwendung wird "
+            "danach beendet und muss anschließend von Hand neu gestartet werden.",
             title="Sicherung wiederherstellen",
             parent=self,
         )
         if not confirmed:
+            return
+
+        current_password = self._engine.url.password or ""
+        backup_password = self._verified_backup_password(entry, current_password)
+        if backup_password is None:
             return
 
         try:
@@ -275,20 +269,29 @@ class BackupManagementDialog(QDialog):
             )
             return
 
+        def _reencrypt_with_current_password(copy: Path) -> None:
+            storage.rekey_database_file(copy, backup_password, current_password)
+
         db_path = self._drive_root / storage.DB_FILENAME
         self._engine.dispose()
         try:
-            backup.restore_backup(entry.path, db_path)
-        except backup.BackupError as exc:
+            backup.restore_backup(
+                entry.path,
+                db_path,
+                prepare=(
+                    None
+                    if backup_password == current_password
+                    else _reencrypt_with_current_password
+                ),
+            )
+        except (backup.BackupError, storage.StorageError) as exc:
+            # The live database was not touched, and a disposed engine
+            # simply opens fresh connections - the program keeps working.
             show_error(
-                f"{exc}\n\nDie vorhandene Datenbank wurde nicht verändert. "
-                "Bitte die Anwendung neu starten.",
+                f"{exc}\n\nDie vorhandene Datenbank wurde nicht verändert.",
                 parent=self,
             )
-            # done() (not a bare quit) so geometry/column widths are still
-            # saved even though the app is about to exit.
-            self.done(QDialog.DialogCode.Rejected)
-            self._quit_application()
+            self._reload_table()
             return
 
         show_info(
@@ -299,6 +302,42 @@ class BackupManagementDialog(QDialog):
         )
         self.done(QDialog.DialogCode.Accepted)
         self._quit_application()
+
+    def _verified_backup_password(
+        self, entry: RestorableBackup, current_password: str
+    ) -> str | None:
+        """The password that opens entry's backup - normally the current
+        one; for a backup from before a password change, the one the user
+        then enters. None if it cannot be restored (message already shown)
+        or the user cancelled."""
+        password = current_password
+        while True:
+            try:
+                storage.verify_database_file(entry.path, password)
+            except storage.IncorrectPasswordError:
+                if password != current_password:
+                    show_error("Das Passwort ist falsch.", parent=self)
+                password = ask_for_password(
+                    self,
+                    title="Passwort der Sicherung",
+                    prompt=(
+                        "Diese Sicherung lässt sich mit dem aktuellen Passwort nicht "
+                        "öffnen - vermutlich stammt sie aus der Zeit vor einer "
+                        "Passwortänderung. Bitte das damalige Passwort eingeben. "
+                        "Die wiederhergestellten Daten werden dabei auf das aktuelle "
+                        "Passwort umgestellt."
+                    ),
+                )
+                if password is None:
+                    return None
+                continue
+            except storage.StorageError as exc:
+                show_error(
+                    f"Diese Sicherung kann nicht wiederhergestellt werden: {exc}",
+                    parent=self,
+                )
+                return None
+            return password
 
     @staticmethod
     def _quit_application() -> None:

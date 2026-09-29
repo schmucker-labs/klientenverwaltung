@@ -16,6 +16,8 @@ import sqlalchemy.dialects.sqlite.pysqlcipher  # noqa: F401
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from alembic.script.revision import RevisionError
+from alembic.util import CommandError
 from sqlalchemy import URL, Connection, Engine, create_engine, event
 from sqlalchemy.engine import ExceptionContext
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
@@ -450,6 +452,23 @@ def foreign_keys_disabled(connection: Connection) -> Iterator[None]:
         connection.commit()
 
 
+def _require_known_schema(connection: Connection) -> None:
+    """Raises StorageError if the database carries a schema revision this
+    program version does not know - it was migrated by a newer version
+    (an older .exe still in use, or a backup made by a newer version)."""
+    current_revision = MigrationContext.configure(connection).get_current_revision()
+    if current_revision is None:
+        return
+    script_directory = ScriptDirectory.from_config(_alembic_config())
+    known_revisions = {script.revision for script in script_directory.walk_revisions()}
+    if current_revision not in known_revisions:
+        raise StorageError(
+            "Diese Daten wurden mit einer neueren Version der Klientenverwaltung "
+            "bearbeitet und können mit dieser Version nicht geöffnet werden. Bitte "
+            "die neueste Version des Programms verwenden."
+        )
+
+
 def apply_migrations(engine: Engine) -> None:
     """Applies pending Alembic migrations against an already-open, encrypted engine.
 
@@ -458,9 +477,71 @@ def apply_migrations(engine: Engine) -> None:
     """
     try:
         with engine.connect() as connection:
+            _require_known_schema(connection)
+            connection.rollback()  # end the read before migrations begin
             command.upgrade(_alembic_config(connection), "head")
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, CommandError, RevisionError) as exc:
         raise StorageError("Datenbank konnte nicht aktualisiert werden.") from exc
+
+
+def verify_database_file(db_path: Path, password: str) -> None:
+    """Checks - without changing it - that db_path is an intact database
+    this program version can open with password.
+
+    Raises IncorrectPasswordError if it cannot be decrypted (wrong password
+    or no database at all - SQLCipher cannot tell the two apart), and
+    StorageError if it is damaged or comes from a newer program version.
+    Used before a backup is restored over the live database.
+    """
+    if not db_path.exists():
+        raise StorageError(f"Die Datei wurde nicht gefunden: {db_path}")
+    engine = create_encrypted_engine(db_path, password)
+    try:
+        # A wrong key already fails while connecting (the connect-time
+        # pragmas are the first statements to touch the file).
+        with engine.connect() as connection:
+            connection.exec_driver_sql("SELECT count(*) FROM sqlite_master")
+            if connection.exec_driver_sql("PRAGMA quick_check").scalar() != "ok":
+                raise StorageError("Die Datei ist beschädigt.")
+            _require_known_schema(connection)
+    except DatabaseError as exc:
+        raise IncorrectPasswordError(
+            "Die Datei lässt sich mit diesem Passwort nicht öffnen (falsches "
+            "Passwort oder keine gültige Sicherung)."
+        ) from exc
+    except SQLAlchemyError as exc:
+        raise StorageError("Die Datei konnte nicht geprüft werden.") from exc
+    finally:
+        engine.dispose()
+
+
+def rekey_database_file(db_path: Path, old_password: str, new_password: str) -> None:
+    """Re-encrypts the database file at db_path from old_password to
+    new_password (SQLCipher's PRAGMA rekey). The file must not be open
+    anywhere else - callers dispose their engine first.
+
+    Raises IncorrectPasswordError if old_password does not open it (then
+    nothing is changed) and WeakPasswordError for a too-short new_password.
+    """
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        raise WeakPasswordError(
+            f"Das Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein."
+        )
+    verify_database_file(db_path, old_password)
+    engine = create_encrypted_engine(db_path, old_password)
+    try:
+        with engine.connect() as connection:
+            # Quoted exactly like SQLAlchemy quotes the key itself, so any
+            # character - including quotes - is taken literally.
+            quoted = connection.dialect.identifier_preparer.quote_identifier(
+                new_password
+            )
+            connection.exec_driver_sql(f"PRAGMA rekey = {quoted}")
+    except SQLAlchemyError as exc:
+        raise StorageError("Das Passwort konnte nicht geändert werden.") from exc
+    finally:
+        engine.dispose()
+    verify_database_file(db_path, new_password)
 
 
 def has_pending_migrations(engine: Engine) -> bool:

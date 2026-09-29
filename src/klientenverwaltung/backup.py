@@ -1,6 +1,9 @@
+import re
 import shutil
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 
 from sqlalchemy import Engine
@@ -22,6 +25,24 @@ class BackupError(Exception):
 
 
 _TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+_TIMESTAMP_WITH_OPTIONAL_COUNTER = re.compile(r"(\d{8}_\d{6})(?:_\d+)?")
+
+
+class BackupOrigin(StrEnum):
+    """Where a restorable backup lives."""
+
+    DATA_DRIVE = "data_drive"
+    BACKUP_FOLDER = "backup_folder"
+    PRE_RESTORE_DATA_DRIVE = "pre_restore_data_drive"
+    PRE_RESTORE_BACKUP_FOLDER = "pre_restore_backup_folder"
+
+
+@dataclass(frozen=True)
+class RestorableBackup:
+    path: Path
+    origin: BackupOrigin
+    size_bytes: int | None
+    """Read once when listing, None if the file could not be read."""
 
 
 def backup_filename(timestamp: datetime) -> str:
@@ -29,12 +50,19 @@ def backup_filename(timestamp: datetime) -> str:
 
 
 def parse_backup_timestamp(path: Path) -> datetime | None:
-    """The timestamp encoded in a backup's filename, or None if it doesn't match."""
+    """The timestamp encoded in a backup's filename, or None if it doesn't match.
+
+    Accepts the "_2", "_3", ... suffix _next_available_destination() adds
+    when two backups are taken within the same second.
+    """
     if not path.stem.startswith(BACKUP_FILENAME_PREFIX):
         return None
     raw = path.stem[len(BACKUP_FILENAME_PREFIX) :]
+    match = _TIMESTAMP_WITH_OPTIONAL_COUNTER.fullmatch(raw)
+    if match is None:
+        return None
     try:
-        return datetime.strptime(raw, _TIMESTAMP_FORMAT)
+        return datetime.strptime(match.group(1), _TIMESTAMP_FORMAT)
     except ValueError:
         return None
 
@@ -130,6 +158,41 @@ def list_backups(folder: Path) -> list[Path]:
         return []
 
 
+def list_restorable_backups(
+    drive_root: Path, configured_folder: Path | None
+) -> list[RestorableBackup]:
+    """Every backup the user can restore, newest first: the regular ones on
+    the data drive and in the configured folder, and the safety copies
+    taken before each restore (their own subfolder) - so an accidental
+    restore of the wrong backup can itself be undone from the app."""
+    sources = [
+        (drive_root, BackupOrigin.DATA_DRIVE),
+        (drive_root / PRE_RESTORE_SUBFOLDER_NAME, BackupOrigin.PRE_RESTORE_DATA_DRIVE),
+    ]
+    if configured_folder is not None and configured_folder != drive_root:
+        sources += [
+            (configured_folder, BackupOrigin.BACKUP_FOLDER),
+            (
+                configured_folder / PRE_RESTORE_SUBFOLDER_NAME,
+                BackupOrigin.PRE_RESTORE_BACKUP_FOLDER,
+            ),
+        ]
+    entries = [
+        RestorableBackup(path=path, origin=origin, size_bytes=_size_or_none(path))
+        for folder, origin in sources
+        for path in list_backups(folder)
+    ]
+    entries.sort(key=lambda entry: entry.path.name, reverse=True)
+    return entries
+
+
+def _size_or_none(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
 def most_recent_backup(folders: Sequence[Path]) -> Path | None:
     """The newest regular backup across all given folders, or None."""
     candidates = [path for folder in folders for path in list_backups(folder)]
@@ -183,13 +246,22 @@ def delete_backup(path: Path) -> None:
         raise BackupError(f"Sicherung konnte nicht gelöscht werden: {exc}") from exc
 
 
-def restore_backup(backup_path: Path, db_path: Path) -> None:
+def restore_backup(
+    backup_path: Path,
+    db_path: Path,
+    *,
+    prepare: Callable[[Path], None] | None = None,
+) -> None:
     """Overwrites db_path with backup_path's contents.
 
     Copies to a temporary file next to db_path first, then atomically
     replaces db_path only once that copy fully succeeded - so a failure
     partway through (disk full, network drive drops) never leaves db_path
     itself half-overwritten; it is either fully replaced or untouched.
+
+    prepare, if given, runs on that temporary copy before it replaces
+    db_path (e.g. re-encrypting a backup made under an older password);
+    if it raises, db_path stays untouched and the exception propagates.
 
     Callers must ensure db_path is not open by any live connection when
     calling this (the caller is expected to dispose its engine first), and
@@ -201,9 +273,14 @@ def restore_backup(backup_path: Path, db_path: Path) -> None:
     tmp_path = db_path.with_name(db_path.name + ".restoring")
     try:
         shutil.copy2(backup_path, tmp_path)
+        if prepare is not None:
+            prepare(tmp_path)
         tmp_path.replace(db_path)
     except OSError as exc:
         tmp_path.unlink(missing_ok=True)
         raise BackupError(
             f"Sicherung konnte nicht wiederhergestellt werden: {exc}"
         ) from exc
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise

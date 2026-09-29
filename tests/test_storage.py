@@ -1,3 +1,4 @@
+import os
 import shutil
 import time
 import uuid
@@ -263,6 +264,96 @@ class TestHasPendingMigrations:
             assert storage.has_pending_migrations(engine) is True
         finally:
             engine.dispose()
+
+
+def _stamp_unknown_future_revision(engine: object) -> None:
+    with engine.begin() as connection:  # type: ignore[attr-defined]
+        connection.execute(text("UPDATE alembic_version SET version_num = 'ffff0000ffff'"))
+
+
+class TestSchemaFromANewerProgramVersion:
+    def test_apply_migrations_explains_a_database_from_a_newer_version(
+        self, tmp_path: Path
+    ) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        engine = storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+        try:
+            _stamp_unknown_future_revision(engine)
+
+            with pytest.raises(storage.StorageError, match="neueren Version"):
+                storage.apply_migrations(engine)
+        finally:
+            engine.dispose()
+
+
+class TestVerifyDatabaseFile:
+    def test_accepts_an_intact_database_with_the_right_password(
+        self, tmp_path: Path
+    ) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort").dispose()
+
+        storage.verify_database_file(
+            drive / storage.DB_FILENAME, "ein-sehr-sicheres-passwort"
+        )
+
+    def test_rejects_the_wrong_password(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort").dispose()
+
+        with pytest.raises(storage.IncorrectPasswordError):
+            storage.verify_database_file(
+                drive / storage.DB_FILENAME, "ein-anderes-passwort-12"
+            )
+
+    def test_rejects_a_file_that_is_no_database(self, tmp_path: Path) -> None:
+        not_a_database = tmp_path / "kaputt.db"
+        not_a_database.write_bytes(os.urandom(4096))
+
+        with pytest.raises(storage.StorageError):
+            storage.verify_database_file(not_a_database, "ein-sehr-sicheres-passwort")
+
+    def test_rejects_a_database_from_a_newer_program_version(
+        self, tmp_path: Path
+    ) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        engine = storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
+        _stamp_unknown_future_revision(engine)
+        engine.dispose()
+
+        with pytest.raises(storage.StorageError, match="neueren Version"):
+            storage.verify_database_file(
+                drive / storage.DB_FILENAME, "ein-sehr-sicheres-passwort"
+            )
+
+
+class TestRekeyDatabaseFile:
+    def test_database_opens_with_the_new_password_only(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "altes-passwort-1234").dispose()
+        db_path = drive / storage.DB_FILENAME
+
+        storage.rekey_database_file(db_path, "altes-passwort-1234", "neues@Passwort%41")
+
+        storage.verify_database_file(db_path, "neues@Passwort%41")
+        with pytest.raises(storage.IncorrectPasswordError):
+            storage.verify_database_file(db_path, "altes-passwort-1234")
+
+    def test_wrong_old_password_changes_nothing(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "altes-passwort-1234").dispose()
+        db_path = drive / storage.DB_FILENAME
+
+        with pytest.raises(storage.IncorrectPasswordError):
+            storage.rekey_database_file(db_path, "falsches-passwort-1", "neues-passwort-123")
+
+        storage.verify_database_file(db_path, "altes-passwort-1234")
 
 
 class TestDriveAlreadySetUp:

@@ -289,3 +289,85 @@ class TestRestoreBackup:
 
         assert db_path.read_bytes() == original_content
         assert not (db_path.with_name(db_path.name + ".restoring")).exists()
+
+    def test_prepare_hook_changes_the_copy_before_it_replaces_the_database(
+        self, engine: Engine, tmp_path: Path
+    ) -> None:
+        """Used to re-encrypt a backup made under an older password with the
+        current one, so the restored database opens with today's password."""
+        backup_path = backup.create_backup(engine, tmp_path / "backups")
+        engine.dispose()
+        db_path = tmp_path / "drive" / storage.DB_FILENAME
+
+        backup.restore_backup(
+            backup_path,
+            db_path,
+            prepare=lambda copy: storage.rekey_database_file(
+                copy, "ein-sehr-sicheres-passwort", "das-neue-passwort-1"
+            ),
+        )
+
+        storage.verify_database_file(db_path, "das-neue-passwort-1")
+        storage.verify_database_file(backup_path, "ein-sehr-sicheres-passwort")
+
+    def test_failing_prepare_hook_leaves_existing_database_untouched(
+        self, engine: Engine, tmp_path: Path
+    ) -> None:
+        backup_path = backup.create_backup(engine, tmp_path / "backups")
+        engine.dispose()
+        db_path = tmp_path / "drive" / storage.DB_FILENAME
+        original_content = db_path.read_bytes()
+
+        def _failing_prepare(_copy: Path) -> None:
+            raise storage.StorageError("Umschlüsseln fehlgeschlagen.")
+
+        with pytest.raises(storage.StorageError):
+            backup.restore_backup(backup_path, db_path, prepare=_failing_prepare)
+
+        assert db_path.read_bytes() == original_content
+        assert not (db_path.with_name(db_path.name + ".restoring")).exists()
+
+
+class TestListRestorableBackups:
+    def test_includes_safety_copies_taken_before_a_restore(
+        self, engine: Engine, tmp_path: Path
+    ) -> None:
+        drive_root = tmp_path / "drive"
+        folder = tmp_path / "backups"
+        base = datetime(2026, 1, 1, 12, 0)
+        on_drive = backup.create_backup(engine, drive_root, now=base)
+        in_folder = backup.create_backup(engine, folder, now=base + timedelta(hours=1))
+        before_restore = backup.create_pre_restore_backup(
+            engine, folder, now=base + timedelta(hours=2)
+        )
+        before_restore_on_drive = backup.create_pre_restore_backup(
+            engine, drive_root, now=base + timedelta(hours=3)
+        )
+
+        restorable = backup.list_restorable_backups(drive_root, folder)
+
+        assert [(entry.path, entry.origin) for entry in restorable] == [
+            (before_restore_on_drive, backup.BackupOrigin.PRE_RESTORE_DATA_DRIVE),
+            (before_restore, backup.BackupOrigin.PRE_RESTORE_BACKUP_FOLDER),
+            (in_folder, backup.BackupOrigin.BACKUP_FOLDER),
+            (on_drive, backup.BackupOrigin.DATA_DRIVE),
+        ]
+
+    def test_without_a_configured_folder_lists_only_the_data_drive(
+        self, engine: Engine, tmp_path: Path
+    ) -> None:
+        drive_root = tmp_path / "drive"
+        on_drive = backup.create_backup(engine, drive_root)
+
+        restorable = backup.list_restorable_backups(drive_root, None)
+
+        assert [entry.path for entry in restorable] == [on_drive]
+
+
+class TestParseBackupTimestamp:
+    def test_parses_the_suffix_of_a_same_second_collision(self, tmp_path: Path) -> None:
+        second_in_same_second = tmp_path / "klientenverwaltung_backup_20260101_120000_2.db"
+
+        assert backup.parse_backup_timestamp(second_in_same_second) == datetime(
+            2026, 1, 1, 12, 0, 0
+        )

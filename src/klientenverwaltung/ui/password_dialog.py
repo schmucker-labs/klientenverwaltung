@@ -12,14 +12,24 @@ from klientenverwaltung.ui.window_settings import restore_geometry, save_geometr
 _GEOMETRY_SETTINGS_KEY = "password/geometry"
 
 
+_DEFAULT_PROMPT = "Bitte Passwort für die Datenplatte eingeben:"
+
+
 class PasswordDialog(QDialog):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        title: str = "Passwort eingeben",
+        prompt: str = _DEFAULT_PROMPT,
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Passwort eingeben")
+        self.setWindowTitle(title)
         self.setModal(True)
         restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
-        label = QLabel("Bitte Passwort für die Datenplatte eingeben:", self)
+        label = QLabel(prompt, self)
+        label.setWordWrap(True)
 
         self._password_edit = QLineEdit(self)
         self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -47,7 +57,12 @@ class PasswordDialog(QDialog):
         super().done(result)
 
 
-def ask_for_password(parent: QWidget | None = None) -> str | None:
+def ask_for_password(
+    parent: QWidget | None = None,
+    *,
+    title: str = "Passwort eingeben",
+    prompt: str = _DEFAULT_PROMPT,
+) -> str | None:
     """Shows the password dialog; returns None if the user cancelled.
 
     Explicitly shown, raised and activated before exec(): a splash screen
@@ -56,7 +71,7 @@ def ask_for_password(parent: QWidget | None = None) -> str | None:
     OS-level keyboard focus - the user would have to click it first before
     typing.
     """
-    dialog = PasswordDialog(parent)
+    dialog = PasswordDialog(parent, title=title, prompt=prompt)
     dialog.show()
     dialog.raise_()
     dialog.activateWindow()
