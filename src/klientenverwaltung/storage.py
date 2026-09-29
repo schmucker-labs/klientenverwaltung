@@ -15,18 +15,14 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from alembic import command
 from klientenverwaltung import config
-from klientenverwaltung.models import TreatmentType
 
 IDENTIFIER_FILENAME = "klientenverwaltung.id"
 DB_FILENAME = "klientenverwaltung.db"
 MIN_PASSWORD_LENGTH = 12
 DRIVE_CHECK_TIMEOUT_SECONDS = 2.0
-
-DEFAULT_TREATMENT_TYPE_NAMES = ("Heilsitzung", "Meditation", "Chakrenausgleich")
 
 
 class StorageError(Exception):
@@ -230,7 +226,11 @@ def open_database(db_path: Path, password: str) -> Engine:
 
 
 def set_up_data_drive(drive_root: Path, password: str) -> Engine:
-    """Einrichtungsfunktion: identifier file, encrypted DB (via Alembic), default treatment types."""
+    """Einrichtungsfunktion: identifier file, encrypted DB (via Alembic).
+
+    No treatment types are created here - the user creates their own,
+    per Auftrag D1 ("Keine Standard-Behandlungsarten mehr").
+    """
     if len(password) < MIN_PASSWORD_LENGTH:
         raise WeakPasswordError(
             f"Das Passwort muss mindestens {MIN_PASSWORD_LENGTH} Zeichen lang sein."
@@ -253,22 +253,14 @@ def set_up_data_drive(drive_root: Path, password: str) -> Engine:
     engine = create_encrypted_engine(db_path, password)
     try:
         apply_migrations(engine)
-        with Session(engine) as session:
-            session.add_all(
-                TreatmentType(name=name) for name in DEFAULT_TREATMENT_TYPE_NAMES
-            )
-            session.commit()
-    except (SQLAlchemyError, StorageError) as exc:
+    except StorageError:
         # Never leave a half-set-up drive behind: a failure here must look,
         # from the outside, exactly like set_up_data_drive() was never
-        # called. apply_migrations() already wraps its own failures as
-        # StorageError, which SQLAlchemyError alone would not catch.
+        # called.
         engine.dispose()
         identifier_path.unlink(missing_ok=True)
         db_path.unlink(missing_ok=True)
-        if isinstance(exc, StorageError):
-            raise
-        raise StorageError("Datenplatte konnte nicht eingerichtet werden.") from exc
+        raise
 
     config.set_last_known_drive_path(drive_root)
     return engine

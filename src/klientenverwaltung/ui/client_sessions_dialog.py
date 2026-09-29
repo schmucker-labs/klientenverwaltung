@@ -15,7 +15,11 @@ from klientenverwaltung.services import (
     TreatmentSessionService,
     TreatmentTypeService,
 )
-from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
+from klientenverwaltung.ui.dialogs import (
+    ask_confirm_delete,
+    ask_create_treatment_type,
+    show_error,
+)
 from klientenverwaltung.ui.media_cleanup import offer_to_delete_now_unused_media
 from klientenverwaltung.ui.media_dialog import MediaDialog
 from klientenverwaltung.ui.report_dialog import ReportDialog
@@ -25,6 +29,9 @@ from klientenverwaltung.ui.session_table_model import (
     MEDIA_COLUMN,
     REPORT_COLUMN,
     SessionTableModel,
+)
+from klientenverwaltung.ui.treatment_type_management_dialog import (
+    TreatmentTypeManagementDialog,
 )
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
@@ -203,6 +210,8 @@ class ClientSessionsDialog(QDialog):
         self._reload_sessions()
 
     def _on_new_session_clicked(self) -> None:
+        if not self._ensure_active_treatment_type_exists():
+            return
         dialog = SessionDialog(
             self._treatment_type_service,
             self._treatment_session_service,
@@ -212,6 +221,33 @@ class ClientSessionsDialog(QDialog):
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload_sessions()
+
+    def _ensure_active_treatment_type_exists(self) -> bool:
+        """Guards "Neue Sitzung": with no active treatment type to pick,
+        SessionDialog's Behandlungsart dropdown would just be empty
+        (Auftrag D1). Offers to open the treatment-type management right
+        away and, if that leaves an active type behind, lets the caller
+        continue straight into SessionDialog.
+        """
+        if self._treatment_type_service.has_active_treatment_types():
+            return True
+        if self._treatment_type_service.has_treatment_types():
+            message = (
+                "Es gibt keine aktive Behandlungsart. Bitte legen Sie zuerst eine "
+                "Behandlungsart an (z. B. 'Chakrenausgleich')."
+            )
+        else:
+            message = (
+                "Es ist noch keine Behandlungsart angelegt. Bitte legen Sie zuerst "
+                "eine Behandlungsart an (z. B. 'Chakrenausgleich')."
+            )
+        if not ask_create_treatment_type(message, parent=self):
+            return False
+        management_dialog = TreatmentTypeManagementDialog(
+            self._treatment_type_service, parent=self
+        )
+        management_dialog.exec()
+        return self._treatment_type_service.has_active_treatment_types()
 
     def _on_edit_session_clicked(self) -> None:
         session = self._selected_session()

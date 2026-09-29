@@ -1,7 +1,6 @@
 import shutil
 import uuid
 from pathlib import Path
-from typing import Self
 
 import pytest
 from sqlalchemy import text
@@ -96,7 +95,7 @@ class TestFindDataDriveAmong:
 
 
 class TestSetUpDataDrive:
-    def test_creates_identifier_file_database_and_default_treatment_types(
+    def test_creates_identifier_file_and_database_without_treatment_types(
         self, tmp_path: Path
     ) -> None:
         drive = tmp_path / "drive"
@@ -110,14 +109,13 @@ class TestSetUpDataDrive:
             uuid.UUID(identifier_content)  # does not raise
             assert (drive / storage.DB_FILENAME).exists()
 
+            # Auftrag D1: the user creates their own treatment types, so
+            # setup must not pre-populate any.
             with engine.connect() as connection:
-                names = {
-                    row[0]
-                    for row in connection.execute(
-                        text("SELECT name FROM treatment_type")
-                    )
-                }
-            assert names == set(storage.DEFAULT_TREATMENT_TYPE_NAMES)
+                count = connection.execute(
+                    text("SELECT count(*) FROM treatment_type")
+                ).scalar()
+            assert count == 0
         finally:
             engine.dispose()
 
@@ -147,9 +145,6 @@ class TestSetUpDataDrive:
     def test_cleans_up_identifier_and_database_file_when_migrations_fail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """apply_migrations() wraps its own errors as StorageError, not
-        SQLAlchemyError - this must still trigger cleanup, not just a
-        plain SQLAlchemyError from elsewhere in the try block."""
         drive = tmp_path / "drive"
         drive.mkdir()
 
@@ -159,38 +154,6 @@ class TestSetUpDataDrive:
         monkeypatch.setattr(storage, "apply_migrations", _failing_apply_migrations)
 
         with pytest.raises(storage.StorageError, match="Migration ist fehlgeschlagen"):
-            storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
-
-        assert not (drive / storage.IDENTIFIER_FILENAME).exists()
-        assert not (drive / storage.DB_FILENAME).exists()
-
-    def test_cleans_up_identifier_and_database_file_when_default_data_insert_fails(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        drive = tmp_path / "drive"
-        drive.mkdir()
-
-        class _FailingSession:
-            def __init__(self, _engine: object) -> None:
-                pass
-
-            def __enter__(self) -> Self:
-                return self
-
-            def __exit__(self, *_args: object) -> None:
-                pass
-
-            def add_all(self, _items: object) -> None:
-                pass
-
-            def commit(self) -> None:
-                from sqlalchemy.exc import SQLAlchemyError
-
-                raise SQLAlchemyError("boom")
-
-        monkeypatch.setattr(storage, "Session", _FailingSession)
-
-        with pytest.raises(storage.StorageError):
             storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort")
 
         assert not (drive / storage.IDENTIFIER_FILENAME).exists()

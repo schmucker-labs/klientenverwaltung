@@ -138,6 +138,29 @@ def test_list_selectable_for_session_includes_current_even_if_inactive(
     assert treatment_type.id in [t.id for t in selectable]
 
 
+def test_has_treatment_types_and_has_active_treatment_types_when_none_exist(
+    treatment_type_service: TreatmentTypeService,
+) -> None:
+    assert treatment_type_service.has_treatment_types() is False
+    assert treatment_type_service.has_active_treatment_types() is False
+
+
+def test_has_active_treatment_types_false_when_all_deactivated(
+    treatment_type_service: TreatmentTypeService, treatment_type: TreatmentType
+) -> None:
+    treatment_type_service.deactivate_treatment_type(treatment_type.id)
+
+    assert treatment_type_service.has_treatment_types() is True
+    assert treatment_type_service.has_active_treatment_types() is False
+
+
+def test_has_active_treatment_types_true_when_one_is_active(
+    treatment_type_service: TreatmentTypeService, treatment_type: TreatmentType
+) -> None:
+    assert treatment_type_service.has_treatment_types() is True
+    assert treatment_type_service.has_active_treatment_types() is True
+
+
 def test_list_treatment_types_can_exclude_inactive(
     treatment_type_service: TreatmentTypeService, treatment_type: TreatmentType
 ) -> None:

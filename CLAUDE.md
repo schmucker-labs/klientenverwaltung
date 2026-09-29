@@ -123,6 +123,10 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
   zurückbleiben). Endgültiges Löschen immer mit Sicherheitsabfrage; Alltag = archivieren.
 - Behandlungsart, die in Sitzungen verwendet wird, darf nicht gelöscht werden, nur deaktiviert.
   Deaktivierte Arten erscheinen nicht in der Auswahl für neue Sitzungen, bleiben in der Historie.
+- Beim Einrichten einer neuen Datenplatte werden keine Standard-Behandlungsarten angelegt;
+  der Anwender legt seine Arten selbst an. Gibt es bei "Neue Sitzung" keine aktive
+  Behandlungsart (keine angelegt oder alle deaktiviert), erscheint vor dem Sitzungsdialog
+  ein Hinweis mit der Möglichkeit, direkt eine Behandlungsart anzulegen.
 - Annahme: 1 Sitzung = genau 1 Behandlungsart (siehe offene Punkte).
 - "Letzte Sitzung" ist immer die jüngste Sitzung mit Datum in der VERGANGENHEIT,
   "Nächster Termin"/"Nächste Sitzung" die nächste in der Zukunft. Beide Werte kommen

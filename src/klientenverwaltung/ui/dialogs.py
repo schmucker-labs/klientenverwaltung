@@ -187,6 +187,26 @@ def ask_use_existing_file(
     return box.clickedButton() is yes_button
 
 
+def ask_create_treatment_type(
+    message: str, *, parent: QWidget | None = None
+) -> bool:
+    """Shown from "Neue Sitzung" when there is no active treatment type to
+    select (Auftrag D1); "Behandlungsart anlegen" opens the existing
+    treatment-type management, "Abbrechen" backs out of creating a session.
+    """
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Information)
+    box.setWindowTitle("Keine aktive Behandlungsart")
+    box.setText(message)
+    create_button = box.addButton(
+        "Behandlungsart anlegen", QMessageBox.ButtonRole.AcceptRole
+    )
+    box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(create_button)
+    box.exec()
+    return box.clickedButton() is create_button
+
+
 def ask_delete_now_unused_media(
     names: list[str], *, parent: QWidget | None = None
 ) -> bool:

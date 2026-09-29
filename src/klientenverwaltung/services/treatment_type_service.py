@@ -55,6 +55,22 @@ class TreatmentTypeService:
                 include_inactive=include_inactive
             )
 
+    def has_treatment_types(self) -> bool:
+        """True if any treatment type exists at all, active or not.
+
+        Distinguishes "none created yet" from "all deactivated" for the
+        "Neue Sitzung" hint text (Auftrag D1) - has_active_treatment_types()
+        alone can't tell those two cases apart.
+        """
+        with self._session_factory() as session:
+            return len(TreatmentTypeRepository(session).list(include_inactive=True)) > 0
+
+    def has_active_treatment_types(self) -> bool:
+        with self._session_factory() as session:
+            return (
+                len(TreatmentTypeRepository(session).list(include_inactive=False)) > 0
+            )
+
     def list_selectable_for_session(
         self, *, current_treatment_type_id: int | None = None
     ) -> list[TreatmentType]:
