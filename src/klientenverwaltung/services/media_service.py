@@ -340,12 +340,26 @@ class MediaService:
                 pass
 
     def resolve_media_path(self, media: StoredMedia) -> Path:
-        return self._media_dir / media.stored_filename
+        return self._path_in_media_dir(media.stored_filename)
 
     def resolve_media_path_for_entry(self, entry: SessionMediaEntry) -> Path:
-        return self._media_dir / entry.stored_filename
+        return self._path_in_media_dir(entry.stored_filename)
 
     def resolve_media_path_for_stored_filename(self, stored_filename: str) -> Path:
+        return self._path_in_media_dir(stored_filename)
+
+    def _path_in_media_dir(self, stored_filename: str) -> Path:
+        r"""stored_filename's path inside the medien folder. Refuses anything
+        that is not a plain file name - "..\klientenverwaltung.db" would
+        otherwise point at the database itself. Names normally come from
+        the database or the folder listing; this keeps the service safe
+        for any other caller (e.g. a later web API) too."""
+        if (
+            not stored_filename
+            or stored_filename in (".", "..")
+            or Path(stored_filename).name != stored_filename
+        ):
+            raise ValidationError(f"Ungültiger Dateiname: {stored_filename!r}")
         return self._media_dir / stored_filename
 
     @database_errors_as("Datei konnte nicht umbenannt werden.")
@@ -403,7 +417,7 @@ class MediaService:
                 media = repo.get_by_id(media_id)
                 if media is None:
                     continue
-                path = self._media_dir / media.stored_filename
+                path = self._path_in_media_dir(media.stored_filename)
                 try:
                     path.unlink(missing_ok=True)
                 except OSError:
@@ -415,7 +429,7 @@ class MediaService:
         return failures
 
     def delete_unknown_file(self, stored_filename: str) -> bool:
-        path = self._media_dir / stored_filename
+        path = self._path_in_media_dir(stored_filename)
         try:
             path.unlink(missing_ok=True)
         except OSError:
@@ -442,7 +456,9 @@ class MediaService:
                     size_bytes=media.size_bytes,
                     created_at=media.created_at,
                     usage_count=usage.get(media.id, 0),
-                    file_missing=not (self._media_dir / media.stored_filename).exists(),
+                    file_missing=not self._path_in_media_dir(
+                        media.stored_filename
+                    ).exists(),
                 )
                 for media in all_media
             ]

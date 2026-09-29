@@ -657,3 +657,23 @@ def test_link_existing_media_attaches_without_copying(
     assert len(list(media_dir.glob("*.jpg"))) == 1  # no second copy
     entries = media_service.list_media_for_session(other_session.id)
     assert [e.media_id for e in entries] == [outcome.media.id]
+
+
+@pytest.mark.parametrize(
+    "stored_filename",
+    [r"..\klientenverwaltung.db", "../klientenverwaltung.db", "..", r"C:\x.db", ""],
+)
+def test_file_names_outside_the_medien_folder_are_refused(
+    media_service: MediaService, tmp_path: Path, stored_filename: str
+) -> None:
+    """Defense in depth for the planned web API: a stored file name must
+    never reach outside the medien folder (e.g. to delete the database)."""
+    database_file = tmp_path / "drive" / "klientenverwaltung.db"
+    database_file.write_bytes(b"data")
+
+    with pytest.raises(ValidationError):
+        media_service.delete_unknown_file(stored_filename)
+    with pytest.raises(ValidationError):
+        media_service.resolve_media_path_for_stored_filename(stored_filename)
+
+    assert database_file.read_bytes() == b"data"
