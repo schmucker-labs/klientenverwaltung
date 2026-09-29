@@ -1,7 +1,5 @@
 import sys
-import traceback
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 
@@ -17,7 +15,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from klientenverwaltung import backup, config, storage
+from klientenverwaltung import backup, config, crash_log, storage
 from klientenverwaltung.services import (
     ClientService,
     MediaService,
@@ -256,25 +254,19 @@ def _log_and_show_crash(
     Without this, the default excepthook just writes to stderr - which in
     this windowed (console=False) release build goes nowhere, so the app
     appears to simply vanish with no explanation. Logs the technical
-    details (exception type/message/traceback only, never anything from a
-    client record) to %APPDATA%, then tells the user in plain German
-    instead of dying silently. Installed as sys.excepthook at the very top
-    of main(), so it also covers exceptions PySide6 routes there itself
-    (an exception escaping a Qt-driven callback, e.g. the splash-timer
-    callback that builds the main window).
+    details to %APPDATA% - exception types and code locations only, never
+    any exception message, since those can carry client data (see
+    crash_log) - then tells the user in plain German instead of dying
+    silently. Installed as sys.excepthook at the very top of main(), so it
+    also covers exceptions PySide6 routes there itself (an exception
+    escaping a Qt-driven callback, e.g. the splash-timer callback that
+    builds the main window).
     """
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_tb)
         return
 
-    log_path = config.error_log_path()
-    details = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-    try:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as log_file:
-            log_file.write(f"--- {datetime.now():%Y-%m-%d %H:%M:%S} ---\n{details}\n")
-    except OSError:
-        pass
+    log_path = crash_log.write_crash_log(exc_value, exc_tb)
 
     app = QApplication.instance() or QApplication(sys.argv)
     show_error(
