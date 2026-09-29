@@ -125,6 +125,39 @@ def test_table_rebuild_during_a_migration_keeps_dependent_rows(
         engine.dispose()
 
 
+def test_existing_session_times_are_truncated_to_whole_minutes(tmp_path: Path) -> None:
+    from alembic import command
+
+    drive = tmp_path / "drive"
+    drive.mkdir()
+    engine = storage.create_encrypted_engine(drive / storage.DB_FILENAME, _PASSWORD)
+    try:
+        with engine.connect() as connection:
+            command.upgrade(storage._alembic_config(connection), "c66a9fbe6d01")
+        with Session(engine) as session:
+            client = Client(first_name="Anna", last_name="Muster")
+            treatment_type = TreatmentType(name="Meditation")
+            session.add_all([client, treatment_type])
+            session.flush()
+            session.add(
+                TreatmentSession(
+                    client_id=client.id,
+                    treatment_type_id=treatment_type.id,
+                    date=datetime(2026, 3, 1, 14, 0, 47, 123000),
+                    duration_minutes=60,
+                )
+            )
+            session.commit()
+
+        storage.apply_migrations(engine)
+
+        with Session(engine) as session:
+            stored = session.scalars(select(TreatmentSession.date)).one()
+        assert stored == datetime(2026, 3, 1, 14, 0)
+    finally:
+        engine.dispose()
+
+
 def test_foreign_keys_are_enforced_again_after_migrations(tmp_path: Path) -> None:
     _drive, engine = _set_up_drive(tmp_path)
     try:

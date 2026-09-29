@@ -27,6 +27,14 @@ _MAX_DURATION_MINUTES = 480
 _GEOMETRY_SETTINGS_KEY = "session_dialog/geometry"
 
 
+def _default_start_time() -> datetime:
+    """"Now", rounded down to the quarter hour - sessions usually start on
+    one, and the value then carries no seconds the HH:mm display would
+    hide (the service stores whole minutes regardless)."""
+    now = datetime.now()
+    return now.replace(minute=now.minute - now.minute % 15, second=0, microsecond=0)
+
+
 class SessionDialog(QDialog):
     def __init__(
         self,
@@ -91,7 +99,7 @@ class SessionDialog(QDialog):
                 self._treatment_type_combo.setCurrentIndex(index)
             self._duration_spinbox.setValue(session.duration_minutes)
         else:
-            self._date_edit.setDateTime(QDateTime(datetime.now()))
+            self._date_edit.setDateTime(QDateTime(_default_start_time()))
 
         self._original_values = self._collect_values()
 

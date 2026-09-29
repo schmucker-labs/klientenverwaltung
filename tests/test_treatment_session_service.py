@@ -160,6 +160,84 @@ def test_create_session_allows_back_to_back_appointments(
     assert directly_after.duration_minutes == 30
 
 
+def test_back_to_back_appointments_are_allowed_despite_leftover_seconds(
+    treatment_session_service: TreatmentSessionService,
+    client: Client,
+    treatment_type: TreatmentType,
+) -> None:
+    """The session dialog shows HH:mm only, but a start derived from "now"
+    carries hidden seconds - 14:00:47 + 60 min must not collide with a
+    session the user sees starting at 15:00."""
+    first = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 14, 0, 47, 123000),
+        duration_minutes=60,
+    )
+    second = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 15, 0, 5),
+        duration_minutes=60,
+    )
+
+    assert first.date == datetime(2026, 3, 1, 14, 0)
+    assert second.date == datetime(2026, 3, 1, 15, 0)
+
+
+def test_update_session_stores_the_date_at_minute_precision(
+    treatment_session_service: TreatmentSessionService,
+    treatment_session: TreatmentSession,
+    treatment_type: TreatmentType,
+) -> None:
+    updated = treatment_session_service.update_session(
+        treatment_session.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 4, 1, 8, 0, 59, 999999),
+        duration_minutes=45,
+    )
+
+    assert updated.date == datetime(2026, 4, 1, 8, 0)
+
+
+def test_update_session_keeps_a_since_deactivated_treatment_type(
+    treatment_session_service: TreatmentSessionService,
+    treatment_type_service: TreatmentTypeService,
+    treatment_session: TreatmentSession,
+    treatment_type: TreatmentType,
+) -> None:
+    """Deactivating a type must not lock its historical sessions: correcting
+    date or duration keeps the (now inactive) type unchanged."""
+    treatment_type_service.deactivate_treatment_type(treatment_type.id)
+
+    updated = treatment_session_service.update_session(
+        treatment_session.id,
+        treatment_type_id=treatment_type.id,
+        date=treatment_session.date,
+        duration_minutes=75,
+    )
+
+    assert updated.duration_minutes == 75
+    assert updated.treatment_type_id == treatment_type.id
+
+
+def test_update_session_rejects_switching_to_a_deactivated_treatment_type(
+    treatment_session_service: TreatmentSessionService,
+    treatment_type_service: TreatmentTypeService,
+    treatment_session: TreatmentSession,
+) -> None:
+    inactive = treatment_type_service.create_treatment_type(name="Reiki")
+    treatment_type_service.deactivate_treatment_type(inactive.id)
+
+    with pytest.raises(ValidationError):
+        treatment_session_service.update_session(
+            treatment_session.id,
+            treatment_type_id=inactive.id,
+            date=treatment_session.date,
+            duration_minutes=60,
+        )
+
+
 def test_update_session_does_not_flag_overlap_with_itself(
     treatment_session_service: TreatmentSessionService,
     treatment_session: TreatmentSession,

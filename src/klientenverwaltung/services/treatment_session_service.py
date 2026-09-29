@@ -64,6 +64,14 @@ class _VisibleTextExtractor(HTMLParser):
         return not "".join(self._chunks).strip()
 
 
+def _to_minute_precision(value: datetime) -> datetime:
+    """Session times are planned and shown in whole minutes (HH:mm). A
+    start derived from "now" would otherwise carry invisible seconds, and
+    two back-to-back appointments the user sees as 14:00-15:00 and 15:00
+    would be rejected as overlapping."""
+    return value.replace(second=0, microsecond=0)
+
+
 def _normalize_html(value: str | None) -> str | None:
     """None for missing or blank content - including a Qt rich-text
     document (e.g. an untouched QTextEdit's toHtml()) that only contains
@@ -91,6 +99,7 @@ class TreatmentSessionService:
         duration_minutes: int,
     ) -> TreatmentSession:
         self._validate_duration(duration_minutes)
+        date = _to_minute_precision(date)
         with self._session_factory() as session:
             if ClientRepository(session).get_by_id(client_id) is None:
                 raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
@@ -159,6 +168,7 @@ class TreatmentSessionService:
         duration_minutes: int,
     ) -> TreatmentSession:
         self._validate_duration(duration_minutes)
+        date = _to_minute_precision(date)
         with self._session_factory() as session:
             repo = TreatmentSessionRepository(session)
             treatment_session = repo.get_by_id(session_id)
@@ -167,10 +177,14 @@ class TreatmentSessionService:
                     f"Sitzung mit ID {session_id} wurde nicht gefunden."
                 )
 
-            treatment_type = TreatmentTypeRepository(session).get_by_id(
-                treatment_type_id
-            )
-            self._require_active_treatment_type(treatment_type, treatment_type_id)
+            # Only a *change* of type must pick an active one: a session
+            # whose type was deactivated later keeps it (historical record),
+            # and correcting its date or duration must still be possible.
+            if treatment_type_id != treatment_session.treatment_type_id:
+                treatment_type = TreatmentTypeRepository(session).get_by_id(
+                    treatment_type_id
+                )
+                self._require_active_treatment_type(treatment_type, treatment_type_id)
 
             self._require_no_overlap(
                 repo, date, duration_minutes, exclude_session_id=session_id
