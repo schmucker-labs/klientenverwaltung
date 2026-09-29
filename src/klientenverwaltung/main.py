@@ -57,6 +57,10 @@ def _open_database_or_none(db_path: Path) -> Engine | None:
 
 def _run_setup_wizard() -> tuple[Path, Engine] | None:
     wizard = SetupWizard()
+    # In front of the splash screen, with keyboard focus (see ask_for_password).
+    wizard.show()
+    wizard.raise_()
+    wizard.activateWindow()
     if wizard.exec() == QDialog.DialogCode.Accepted:
         assert wizard.drive_root is not None
         assert wizard.engine is not None

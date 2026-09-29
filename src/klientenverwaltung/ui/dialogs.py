@@ -3,6 +3,19 @@ from typing import Literal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QMessageBox, QWidget
 
+
+def _exec_in_front(box: QMessageBox) -> None:
+    """Runs box modally - raised and activated first when it has no parent
+    window, like the startup messages ("Datenplatte nicht gefunden", ...)
+    shown while the splash screen is up: otherwise such a box can open
+    behind the splash, or without keyboard focus (see ask_for_password)."""
+    if box.parentWidget() is None:
+        box.show()
+        box.raise_()
+        box.activateWindow()
+    box.exec()
+
+
 _NAMES_SHOWN = 5
 
 
@@ -32,7 +45,7 @@ def show_about(
         f"<b>{program_name}</b><br>Version {version}<br><br>Product by {author}"
     )
     box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
-    box.exec()
+    _exec_in_front(box)
 
 
 def show_error(
@@ -44,7 +57,7 @@ def show_error(
     box.setWindowTitle(title)
     box.setText(message)
     box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
-    box.exec()
+    _exec_in_front(box)
 
 
 def show_info(
@@ -56,7 +69,7 @@ def show_info(
     box.setWindowTitle(title)
     box.setText(message)
     box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
-    box.exec()
+    _exec_in_front(box)
 
 
 def ask_retry(message: str, *, title: str, parent: QWidget | None = None) -> bool:
@@ -68,7 +81,7 @@ def ask_retry(message: str, *, title: str, parent: QWidget | None = None) -> boo
     retry_button = box.addButton("Erneut versuchen", QMessageBox.ButtonRole.AcceptRole)
     box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(retry_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is retry_button
 
 
@@ -86,7 +99,7 @@ def ask_retry_or_setup(
     )
     box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(retry_button)
-    box.exec()
+    _exec_in_front(box)
     clicked = box.clickedButton()
     if clicked is retry_button:
         return "retry"
@@ -110,7 +123,7 @@ def ask_use_other_data_drive(
     retry_button = box.addButton("Erneut versuchen", QMessageBox.ButtonRole.ActionRole)
     box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(retry_button)
-    box.exec()
+    _exec_in_front(box)
     clicked = box.clickedButton()
     if clicked is use_button:
         return "use"
@@ -136,7 +149,7 @@ def ask_save_discard_cancel(
     )
     box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(save_button)
-    box.exec()
+    _exec_in_front(box)
     clicked = box.clickedButton()
     if clicked is save_button:
         return "save"
@@ -160,7 +173,7 @@ def ask_confirm_deactivate(
     deactivate_button = box.addButton("Deaktivieren", QMessageBox.ButtonRole.AcceptRole)
     box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(deactivate_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is deactivate_button
 
 
@@ -175,7 +188,7 @@ def ask_confirm_delete(
     delete_button = box.addButton("Löschen", QMessageBox.ButtonRole.DestructiveRole)
     cancel_button = box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(cancel_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is delete_button
 
 
@@ -196,7 +209,7 @@ def ask_confirm_restore(
     )
     cancel_button = box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(cancel_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is restore_button
 
 
@@ -215,7 +228,7 @@ def ask_set_up_backup_folder(*, parent: QWidget | None = None) -> bool:
     set_up_button = box.addButton("Jetzt einrichten…", QMessageBox.ButtonRole.AcceptRole)
     box.addButton("Später", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(set_up_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is set_up_button
 
 
@@ -233,7 +246,7 @@ def ask_use_questionable_backup_folder(
         "Anderen Ordner wählen", QMessageBox.ButtonRole.RejectRole
     )
     box.setDefaultButton(other_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is use_button
 
 
@@ -256,7 +269,7 @@ def ask_use_existing_file(
     yes_button = box.addButton("Ja", QMessageBox.ButtonRole.AcceptRole)
     box.addButton("Nein", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(yes_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is yes_button
 
 
@@ -276,7 +289,7 @@ def ask_create_treatment_type(
     )
     box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(create_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is create_button
 
 
@@ -302,5 +315,5 @@ def ask_delete_now_unused_media(
     delete_button = box.addButton("Löschen", QMessageBox.ButtonRole.DestructiveRole)
     keep_button = box.addButton("Behalten", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(keep_button)
-    box.exec()
+    _exec_in_front(box)
     return box.clickedButton() is delete_button
