@@ -129,21 +129,23 @@ class ChangePasswordDialog(QDialog):
         if not self._change_button.isEnabled():
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        failure: storage.StorageError | None = None
         try:
             self._database.change_password(
                 self._current_edit.text(), self._new_edit.text()
             )
-        except storage.IncorrectPasswordError:
+        except storage.StorageError as exc:
+            failure = exc
+        finally:
+            QApplication.restoreOverrideCursor()
+        if isinstance(failure, storage.IncorrectPasswordError):
             self._error_label.setText("Das bisherige Passwort ist falsch.")
             self._current_edit.clear()
             self._current_edit.setFocus()
-            return
-        except storage.StorageError as exc:
-            show_error(str(exc), parent=self)
-            return
-        finally:
-            QApplication.restoreOverrideCursor()
-        self.accept()
+        elif failure is not None:
+            show_error(str(failure), parent=self)
+        else:
+            self.accept()
 
     def done(self, result: int) -> None:
         save_geometry(self, _GEOMETRY_SETTINGS_KEY)

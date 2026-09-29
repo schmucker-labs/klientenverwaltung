@@ -168,7 +168,12 @@ def _tables(frame: QTextFrame) -> Iterator[QTextTable]:
 def _flatten_tables(document: QTextDocument) -> None:
     """Replaces every table - nested ones first - by one paragraph per
     non-empty cell (row by row), keeping the cells' text and formatting."""
-    while tables := list(_tables(document.rootFrame())):
+    # Bounded by the number of tables at the start - each pass removes one,
+    # so this can never spin forever should a removal ever not take effect.
+    for _ in range(len(list(_tables(document.rootFrame())))):
+        tables = list(_tables(document.rootFrame()))
+        if not tables:
+            break
         table = max(tables, key=lambda candidate: candidate.firstPosition())
         cell_contents: list[QTextDocumentFragment] = []
         for row in range(table.rows()):

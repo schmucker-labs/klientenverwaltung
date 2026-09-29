@@ -72,3 +72,23 @@ def test_change_password_rejects_an_unchanged_or_too_short_password(
         database.change_password(_OLD, new_password)
 
     assert database.password == _OLD
+
+
+def test_a_failure_after_the_rekey_says_the_new_password_is_in_effect(
+    database: OpenDatabase, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once the file is re-encrypted, only the new password opens it. A
+    failure after that point must never read like 'wrong current password'
+    (the user would keep the old one and be locked out)."""
+    config.set_backup_folder_path(tmp_path / "backups")
+
+    def _failing_open(*_args: object, **_kwargs: object) -> None:
+        raise storage.IncorrectPasswordError("simulated")
+
+    monkeypatch.setattr(storage, "open_database", _failing_open)
+
+    with pytest.raises(storage.StorageError) as exc_info:
+        database.change_password(_OLD, _NEW)
+
+    assert not isinstance(exc_info.value, storage.IncorrectPasswordError)
+    assert "neuen Passwort" in str(exc_info.value)

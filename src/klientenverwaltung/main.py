@@ -190,7 +190,9 @@ def _run_shutdown_backup(database: OpenDatabase) -> None:
     on by the next start's backup.
     """
     folder = config.get_backup_folder_path()
-    if database.closed or folder is None:
+    # db_path gone: the drive was unplugged (or another one now has its
+    # letter) - connecting would only fail, or create an empty database.
+    if database.closed or folder is None or not database.db_path.exists():
         return
     try:
         backup.back_up_if_changed(database.engine, database.db_path, folder)

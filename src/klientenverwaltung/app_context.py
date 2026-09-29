@@ -91,7 +91,17 @@ class OpenDatabase:
         self._back_up_before_password_change()
         self._engine.dispose()
         storage.rekey_database_file(self.db_path, current_password, new_password)
-        self.replace_engine(storage.open_database(self.db_path, new_password))
+        # From here on only new_password opens the file - no failure may
+        # read like "wrong current password" or the user keeps the old one.
+        try:
+            new_engine = storage.open_database(self.db_path, new_password)
+        except storage.StorageError as exc:
+            raise storage.StorageError(
+                "Das Passwort wurde geändert, die Datenbank ließ sich danach aber "
+                "nicht neu öffnen. Bitte das Programm neu starten und mit dem "
+                "neuen Passwort anmelden."
+            ) from exc
+        self.replace_engine(new_engine)
 
     def _back_up_before_password_change(self) -> None:
         folders = [

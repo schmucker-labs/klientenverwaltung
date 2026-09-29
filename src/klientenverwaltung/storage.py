@@ -596,7 +596,17 @@ def rekey_database_file(db_path: Path, old_password: str, new_password: str) -> 
         raise StorageError("Das Passwort konnte nicht geändert werden.") from exc
     finally:
         engine.dispose()
-    verify_database_file(db_path, new_password)
+    try:
+        verify_database_file(db_path, new_password)
+    except StorageError as exc:
+        # Deliberately not IncorrectPasswordError: that would read like
+        # "the old password was wrong", while the file may well already
+        # be keyed with the new one.
+        raise StorageError(
+            "Nach der Passwortänderung ließ sich die Datenbank mit dem neuen "
+            "Passwort nicht prüfen. Bitte das Programm neu starten und zuerst "
+            "das neue, dann das bisherige Passwort versuchen."
+        ) from exc
 
 
 def has_pending_migrations(engine: Engine) -> bool:
