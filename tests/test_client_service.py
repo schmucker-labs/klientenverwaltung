@@ -68,6 +68,36 @@ def test_list_clients_filters_by_search_term(client_service: ClientService) -> N
 
 
 @pytest.mark.parametrize(
+    ("search", "expected_last_names"),
+    [
+        ("özdemir", ["Özdemir"]),  # lowercase umlaut
+        ("ÖZDEMIR", ["Özdemir"]),
+        ("ozdemir", ["Özdemir"]),  # typed without the umlaut
+        ("über", ["Özdemir"]),  # city "Überlingen"
+        ("strasse", ["Muster"]),  # "ß" typed as "ss"
+        ("Anna Muster", ["Muster"]),  # first + last name
+        ("muster anna", ["Muster"]),  # any order
+        ("Anna Özdemir", []),  # every term must match
+        ("%", []),  # no SQL wildcard semantics
+        ("_", []),
+    ],
+)
+def test_list_clients_with_last_session_search_matches_like_a_person_types(
+    client_service: ClientService, search: str, expected_last_names: list[str]
+) -> None:
+    client_service.create_client(
+        first_name="Anna", last_name="Muster", city="Großstraße-Stadt"
+    )
+    client_service.create_client(
+        first_name="Deniz", last_name="Özdemir", city="Überlingen"
+    )
+
+    results = client_service.list_clients_with_last_session(search=search)
+
+    assert [entry.last_name for entry in results] == expected_last_names
+
+
+@pytest.mark.parametrize(
     "raw,expected",
     [
         ("anna", "Anna"),

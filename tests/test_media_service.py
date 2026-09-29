@@ -617,6 +617,23 @@ def test_list_unlinked_media_for_session_filters_by_search(
     assert [e.original_filename for e in results] == ["urlaub.jpg"]
 
 
+def test_list_unlinked_media_for_session_search_ignores_umlaut_case(
+    media_service: MediaService, treatment_session_service, treatment_type: TreatmentType,
+    client: Client, treatment_session: TreatmentSession, tmp_path: Path,
+) -> None:
+    other_session = treatment_session_service.create_session(
+        client_id=client.id,
+        treatment_type_id=treatment_type.id,
+        date=datetime(2026, 3, 1, 9, 0),
+        duration_minutes=30,
+    )
+    media_service.import_file(treatment_session.id, _make_source_file(tmp_path, "Übung.mp3", b"a" * 5))
+
+    results = media_service.list_unlinked_media_for_session(other_session.id, search="übung")
+
+    assert [e.original_filename for e in results] == ["Übung.mp3"]
+
+
 def test_link_existing_media_attaches_without_copying(
     media_service: MediaService,
     treatment_session_service,

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from klientenverwaltung.models import Client
 from klientenverwaltung.repositories import ClientRepository, TreatmentSessionRepository
 from klientenverwaltung.services.errors import NotFoundError, ValidationError
+from klientenverwaltung.services.search import matches, search_terms
 from klientenverwaltung.services.transaction import transaction
 
 # German nobiliary/prefix particles: stay lowercase unless they open the field
@@ -39,6 +40,18 @@ def _normalize_word(word: str, *, is_first: bool) -> str:
         part if part in ("-", "'") else part.capitalize()
         for part in _WORD_PART_SPLIT_RE.split(word)
     )
+
+
+def _filter_by_search(clients: list[Client], search: str | None) -> list[Client]:
+    """Clients matching the search box: name or city, see services.search."""
+    terms = search_terms(search)
+    if not terms:
+        return clients
+    return [
+        client
+        for client in clients
+        if matches(terms, client.first_name, client.last_name, client.city)
+    ]
 
 
 @dataclass(frozen=True)
@@ -138,16 +151,16 @@ class ClientService:
         self, *, include_archived: bool = False, search: str | None = None
     ) -> list[Client]:
         with self._session_factory() as session:
-            return ClientRepository(session).list(
-                include_archived=include_archived, search=search
-            )
+            clients = ClientRepository(session).list(include_archived=include_archived)
+        return _filter_by_search(clients, search)
 
     def list_clients_with_last_session(
         self, *, include_archived: bool = False, search: str | None = None
     ) -> list[ClientListEntry]:
         with self._session_factory() as session:
-            clients = ClientRepository(session).list(
-                include_archived=include_archived, search=search
+            clients = _filter_by_search(
+                ClientRepository(session).list(include_archived=include_archived),
+                search,
             )
             client_ids = [client.id for client in clients]
             session_repo = TreatmentSessionRepository(session)

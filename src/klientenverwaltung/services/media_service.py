@@ -20,6 +20,7 @@ from klientenverwaltung.services.errors import (
     ServiceError,
     ValidationError,
 )
+from klientenverwaltung.services.search import matches, search_terms
 from klientenverwaltung.services.transaction import transaction
 
 _logger = logging.getLogger(__name__)
@@ -463,7 +464,8 @@ class MediaService:
         self, session_id: int, search: str | None = None
     ) -> list[MediaPickerEntry]:
         with self._session_factory() as session:
-            rows = MediaRepository(session).list_unlinked_for_session(session_id, search)
+            rows = MediaRepository(session).list_unlinked_for_session(session_id)
+        terms = search_terms(search)
         return [
             MediaPickerEntry(
                 media_id=media.id,
@@ -472,6 +474,7 @@ class MediaService:
                 size_bytes=media.size_bytes,
             )
             for media in rows
+            if matches(terms, media.original_filename)
         ]
 
     def cleanup_orphaned_part_files(self) -> int:

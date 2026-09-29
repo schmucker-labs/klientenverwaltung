@@ -94,15 +94,11 @@ class MediaRepository:
         )
         return list(self._session.scalars(stmt))
 
-    def list_unlinked_for_session(
-        self, session_id: int, search: str | None = None
-    ) -> list[Media]:
+    def list_unlinked_for_session(self, session_id: int) -> list[Media]:
         linked_subquery = select(SessionMedia.media_id).where(
             SessionMedia.session_id == session_id
         )
         stmt = select(Media).where(Media.id.not_in(linked_subquery))
-        if search:
-            stmt = stmt.where(Media.original_filename.ilike(f"%{search}%"))
         stmt = stmt.order_by(Media.original_filename)
         return list(self._session.scalars(stmt))
 
