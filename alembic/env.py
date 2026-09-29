@@ -12,9 +12,11 @@ from klientenverwaltung.storage import create_encrypted_engine, foreign_keys_dis
 # access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
+# alembic.ini's logging setup is for manual `alembic` CLI runs only. Inside
+# the application (which passes its open connection) it must not run: it
+# would disable every logger the app already created and install its own
+# stderr handler - on every single start.
+if config.config_file_name is not None and "connection" not in config.attributes:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
@@ -34,9 +36,9 @@ def _dev_db_path_and_password() -> tuple[Path, str]:
     password = os.environ.get("KLIENTENVERWALTUNG_DB_PASSWORD")
     if not path or not password:
         raise RuntimeError(
-            "Keine offene Verbindung uebergeben und "
+            "Keine offene Verbindung übergeben und "
             "KLIENTENVERWALTUNG_DB_PATH / KLIENTENVERWALTUNG_DB_PASSWORD sind "
-            "nicht gesetzt. Fuer manuelle alembic-Aufrufe (z. B. "
+            "nicht gesetzt. Für manuelle alembic-Aufrufe (z. B. "
             "--autogenerate) beide Umgebungsvariablen setzen."
         )
     return Path(path), password

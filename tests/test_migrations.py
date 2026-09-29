@@ -1,3 +1,4 @@
+import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -166,3 +167,20 @@ def test_foreign_keys_are_enforced_again_after_migrations(tmp_path: Path) -> Non
             assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
     finally:
         engine.dispose()
+
+
+def test_running_migrations_leaves_the_applications_logging_alone(
+    tmp_path: Path,
+) -> None:
+    """alembic.ini's logging setup is for the developer CLI: applied inside
+    the app it disabled every logger that already existed (e.g. the media
+    service's) and installed its own stderr handler."""
+    app_logger = logging.getLogger("klientenverwaltung.services.media_service")
+    app_logger.disabled = False
+    _drive, engine = _set_up_drive(tmp_path)
+    try:
+        storage.apply_migrations(engine)
+    finally:
+        engine.dispose()
+
+    assert app_logger.disabled is False
