@@ -214,6 +214,17 @@ def save_theme_mode(mode: ThemeMode) -> None:
     QSettings().setValue(_THEME_MODE_SETTINGS_KEY, mode.value)
 
 
+_current_mode = ThemeMode.LIGHT
+
+
+def current_palette() -> ColorPalette:
+    """The palette of the theme applied last - for colors that code sets
+    directly (e.g. a table model's ForegroundRole) rather than via the
+    style sheet. Read on every paint, so a theme switch reaches them with
+    the repaint the style sheet change triggers anyway."""
+    return get_palette(_current_mode)
+
+
 def apply_theme_mode(mode: ThemeMode) -> None:
     """Applies `mode` to the whole application, live.
 
@@ -221,6 +232,8 @@ def apply_theme_mode(mode: ThemeMode) -> None:
     open window and dialog re-polishes with the new colors immediately -
     no restart, and no per-window wiring needed as new dialogs are added.
     """
+    global _current_mode
+    _current_mode = mode
     app = QApplication.instance()
     if isinstance(app, QApplication):
         app.setStyleSheet(build_stylesheet(get_palette(mode)))
@@ -353,6 +366,15 @@ def build_stylesheet(palette: ColorPalette) -> str:
             padding: 6px 14px;
             min-height: 30px;
         }}
+        /* The default button (what Enter triggers) is tinted; the focused
+           one gets a thicker ring - so both stay tellable apart, also when
+           they are the same button. Rules of equal specificity: the later
+           one wins, hence hover/pressed/focus/disabled after default. */
+        QPushButton:default {{
+            background-color: {p.selection_background};
+            border: 1px solid {p.accent};
+            color: {p.text};
+        }}
         QPushButton:hover {{
             background-color: {p.hover};
             color: {p.text};
@@ -363,17 +385,15 @@ def build_stylesheet(palette: ColorPalette) -> str:
             border: 1px solid {p.accent_secondary};
         }}
         QPushButton:focus {{
-            border: 1px solid {p.focus};
+            border: 2px solid {p.focus};
+            padding: 5px 13px;
             color: {p.text};
         }}
         QPushButton:disabled {{
             background-color: {p.surface_panel};
             color: {p.text_disabled};
             border: 1px solid {p.lines};
-        }}
-        QPushButton:default {{
-            border: 1px solid {p.accent};
-            color: {p.text};
+            padding: 6px 14px;
         }}
         QPushButton:checked {{
             background-color: {p.accent};
@@ -432,6 +452,9 @@ def build_stylesheet(palette: ColorPalette) -> str:
             border: 1px solid {p.lines};
             outline: none;
         }}
+        QAbstractItemView:focus {{
+            border: 1px solid {p.focus};
+        }}
         QTableView {{
             gridline-color: {p.lines};
         }}
@@ -458,14 +481,45 @@ def build_stylesheet(palette: ColorPalette) -> str:
             padding: 4px 6px;
         }}
 
-        QScrollBar {{
+        QScrollBar:vertical {{
             background-color: {p.surface_toolbar};
+            width: 14px;
+            margin: 0;
+            border: none;
+        }}
+        QScrollBar:horizontal {{
+            background-color: {p.surface_toolbar};
+            height: 14px;
+            margin: 0;
+            border: none;
         }}
         QScrollBar::handle {{
-            background-color: {p.lines};
+            background-color: {p.text_disabled};
+            border-radius: 5px;
+            margin: 2px;
+        }}
+        QScrollBar::handle:vertical {{
+            min-height: 32px;
+        }}
+        QScrollBar::handle:horizontal {{
+            min-width: 32px;
         }}
         QScrollBar::handle:hover {{
             background-color: {p.text_secondary};
+        }}
+        QScrollBar::handle:pressed {{
+            background-color: {p.accent_secondary};
+        }}
+        /* Unstyled, these fall back to a dithered pattern and fixed-size
+           arrow areas - the groove must be plain, the arrows gone. */
+        QScrollBar::add-page, QScrollBar::sub-page {{
+            background: none;
+        }}
+        QScrollBar::add-line, QScrollBar::sub-line {{
+            width: 0;
+            height: 0;
+            border: none;
+            background: none;
         }}
 
         QSplitter::handle {{

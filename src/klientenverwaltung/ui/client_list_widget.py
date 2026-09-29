@@ -103,7 +103,9 @@ class ClientListWidget(QWidget):
         self._table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
         )
-        self._table_view.doubleClicked.connect(self._on_row_double_clicked)
+        # activated, not doubleClicked: on Windows it fires for a double
+        # click *and* for Enter on the selected row (keyboard use).
+        self._table_view.activated.connect(self._on_row_activated)
         self._table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table_view.customContextMenuRequested.connect(self._show_context_menu)
         self._new_button.clicked.connect(self._on_new_clicked)
@@ -182,7 +184,7 @@ class ClientListWidget(QWidget):
         dialog.exec()
         self._reload()
 
-    def _on_row_double_clicked(self, index: QModelIndex) -> None:
+    def _on_row_activated(self, index: QModelIndex) -> None:
         if not index.isValid():
             return
         entry = self._table_model.entry_at(index.row())

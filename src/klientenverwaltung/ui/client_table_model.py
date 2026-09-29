@@ -5,7 +5,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFont
 
 from klientenverwaltung.services import ClientListEntry, UpcomingAppointment
-from klientenverwaltung.ui.theme import LIGHT_PALETTE
+from klientenverwaltung.ui.theme import current_palette
 
 COLUMN_TITLES = (
     "Anrede",
@@ -122,7 +122,7 @@ class ClientTableModel(QAbstractTableModel):
             return font
 
         if role == Qt.ItemDataRole.ForegroundRole and entry.archived:
-            return QColor(LIGHT_PALETTE.text_archived)
+            return QColor(current_palette().text_archived)
 
         if role != Qt.ItemDataRole.DisplayRole:
             return None

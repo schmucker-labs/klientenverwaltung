@@ -1,3 +1,4 @@
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -43,6 +44,12 @@ class TreatmentTypeEditDialog(QDialog):
         save_button.setDefault(True)
         button_box.accepted.connect(self._on_save_clicked)
         button_box.rejected.connect(self.reject)
+        self._saved = False
+        # Enter inside the description is a line break (docs/ui-regeln.md):
+        # Strg+S saves and stays, Strg+Enter saves and closes.
+        QShortcut(QKeySequence("Ctrl+S"), self, activated=self._save)
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_save_clicked)
+        QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._on_save_clicked)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
@@ -69,7 +76,7 @@ class TreatmentTypeEditDialog(QDialog):
     def _is_dirty(self) -> bool:
         return self._collect_values() != self._original_values
 
-    def _on_save_clicked(self) -> None:
+    def _save(self) -> bool:
         values = self._collect_values()
         try:
             if self._treatment_type_id is None:
@@ -79,13 +86,22 @@ class TreatmentTypeEditDialog(QDialog):
                 self._service.update_treatment_type(self._treatment_type_id, **values)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
-            return
+            return False
         self._original_values = values
-        self.accept()
+        self._saved = True
+        return True
+
+    def _on_save_clicked(self) -> None:
+        if self._save():
+            self.accept()
 
     def reject(self) -> None:
         if not self._is_dirty():
-            super().reject()
+            # Saved earlier via Strg+S: the caller must still reload.
+            if self._saved:
+                self.accept()
+            else:
+                super().reject()
             return
         choice = ask_save_discard_cancel(
             "Es gibt ungespeicherte Änderungen an dieser Behandlungsart.", parent=self

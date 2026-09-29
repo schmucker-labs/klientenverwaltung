@@ -1,8 +1,8 @@
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PySide6.QtGui import QFont, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QColor, QFont
 
 from klientenverwaltung.models import TreatmentType
+from klientenverwaltung.ui.theme import current_palette
 
 COLUMN_TITLES = ("Name", "Beschreibung", "Status")
 
@@ -58,9 +58,9 @@ class TreatmentTypeTableModel(QAbstractTableModel):
             return font
 
         if role == Qt.ItemDataRole.ForegroundRole and not treatment_type.active:
-            return QApplication.palette().color(
-                QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text
-            )
+            # De-emphasized like archived clients, but still readable - the
+            # disabled-text color would be too faint for content.
+            return QColor(current_palette().text_archived)
 
         if role != Qt.ItemDataRole.DisplayRole:
             return None

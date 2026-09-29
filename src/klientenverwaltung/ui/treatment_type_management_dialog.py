@@ -1,3 +1,4 @@
+from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -76,6 +77,7 @@ class TreatmentTypeManagementDialog(QDialog):
         self._table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
         )
+        self._table_view.doubleClicked.connect(self._on_row_double_clicked)
 
         self._new_button = QPushButton("Neu", self)
         self._edit_button = QPushButton("Bearbeiten", self)
@@ -139,6 +141,10 @@ class TreatmentTypeManagementDialog(QDialog):
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload()
+
+    def _on_row_double_clicked(self, index: QModelIndex) -> None:
+        if index.isValid():
+            self._on_edit_clicked()
 
     def _on_edit_clicked(self) -> None:
         treatment_type = self._selected_type()

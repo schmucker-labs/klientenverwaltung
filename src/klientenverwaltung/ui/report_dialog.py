@@ -387,6 +387,8 @@ class ReportDialog(QDialog):
         button.setFixedWidth(36)
         button.setIconSize(QSize(_TOOLBAR_ICON_SIZE, _TOOLBAR_ICON_SIZE))
         button.setToolTip(f"{tooltip} (Strg+{shortcut[-1]})")
+        # The letter is an icon, not text - name it for screen readers.
+        button.setAccessibleName(tooltip)
         button.setShortcut(QKeySequence(shortcut))
         # Never takes keyboard focus, so clicking it (or its shortcut) never
         # moves focus out of whichever text field is being edited - the

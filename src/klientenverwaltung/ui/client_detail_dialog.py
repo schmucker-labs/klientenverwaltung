@@ -1,4 +1,5 @@
 from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -100,6 +101,11 @@ class ClientDetailDialog(QDialog):
         self._save_client_button = QPushButton("Speichern", self)
         self._save_client_button.setDefault(True)
         self._save_client_button.clicked.connect(self._on_save_clicked)
+        # Enter inside Anliegen/Notizen is a line break (docs/ui-regeln.md):
+        # Strg+S saves and stays, Strg+Enter saves and closes.
+        QShortcut(QKeySequence("Ctrl+S"), self, activated=self._on_save_clicked)
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_save_and_close)
+        QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._on_save_and_close)
         save_row = QHBoxLayout()
         save_row.addStretch()
         save_row.addWidget(self._save_client_button)
@@ -263,7 +269,7 @@ class ClientDetailDialog(QDialog):
             else "Nächste Sitzung: keine"
         )
 
-    def _on_save_clicked(self) -> None:
+    def _save(self) -> bool:
         values = self._collect_form_values()
         try:
             if self._client_id is None:
@@ -273,10 +279,21 @@ class ClientDetailDialog(QDialog):
                 client = self._services.clients.update_client(self._client_id, **values)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
-            return
-        self._original_values = values
+            return False
+        # Show what was stored - the service normalizes casing - not the
+        # raw input.
+        self._populate_form(client)
+        self._original_values = self._collect_form_values()
         self.setWindowTitle(f"Klient: {client.first_name} {client.last_name}")
         self._update_sessions_button()
+        return True
+
+    def _on_save_clicked(self) -> None:
+        self._save()
+
+    def _on_save_and_close(self) -> None:
+        if self._save():
+            self.accept()
 
     def _on_sessions_clicked(self) -> None:
         if self._client_id is None:
@@ -287,10 +304,8 @@ class ClientDetailDialog(QDialog):
             )
             if choice == "cancel":
                 return
-            if choice == "save":
-                self._on_save_clicked()
-                if self._is_dirty():
-                    return
+            if choice == "save" and not self._save():
+                return
         client_name = f"{self._first_name_edit.text()} {self._last_name_edit.text()}"
         dialog = ClientSessionsDialog(
             self._services,
@@ -313,6 +328,5 @@ class ClientDetailDialog(QDialog):
         if choice == "discard":
             super().reject()
             return
-        self._on_save_clicked()
-        if not self._is_dirty():
+        if self._save():
             super().reject()

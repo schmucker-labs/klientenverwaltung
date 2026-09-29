@@ -1,3 +1,4 @@
+from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -108,6 +109,7 @@ class ClientSessionsDialog(QDialog):
         self._session_table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
         )
+        self._session_table_view.doubleClicked.connect(self._on_session_double_clicked)
 
         self._media_button = QPushButton("Medien", self)
         self._report_button = QPushButton("Bericht", self)
@@ -242,6 +244,10 @@ class ClientSessionsDialog(QDialog):
         )
         management_dialog.exec()
         return self._services.treatment_types.has_active_treatment_types()
+
+    def _on_session_double_clicked(self, index: QModelIndex) -> None:
+        if index.isValid():
+            self._on_edit_session_clicked()
 
     def _on_edit_session_clicked(self) -> None:
         session = self._selected_session()

@@ -95,6 +95,12 @@ oder eine Tabelle mit Spalten hinzukommt.
   und werden dadurch unbedienbar. Für QMenu::item immer padding setzen, für
   QSplitter::handle immer eine Breite/Höhe (ca. 6 px), eine sichtbare Farbe und
   einen Hover-Zustand.
+- Bei gestylten QScrollBar immer Breite/Höhe, ::handle mit Mindestgröße, ::add-page/
+  ::sub-page (sonst gepunktetes Schachbrettmuster in der Rinne) und ::add-line/::sub-line
+  definieren. Fokus und Standard-Button müssen unterscheidbar bleiben: Standard-Button
+  mit getönter Fläche, Fokus mit 2 px Rahmen (Innenabstand um 1 px verringert, damit
+  nichts springt). Farben, die Code direkt setzt (z. B. ForegroundRole eines
+  Tabellenmodells), kommen aus `theme.current_palette()`, nie aus einer festen Palette.
 - Bei gestylten QComboBox immer auch ::drop-down und ::down-arrow gestalten, sonst
   fehlt der Aufklapp-Pfeil. Gleiches gilt für QWizard: der Button-Bereich wird separat
   eingefärbt und bleibt sonst im nativen Hell.
