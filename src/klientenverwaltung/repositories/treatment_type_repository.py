@@ -21,10 +21,6 @@ class TreatmentTypeRepository:
     def delete(self, treatment_type: TreatmentType) -> None:
         self._session.delete(treatment_type)
 
-    def get_by_name(self, name: str) -> TreatmentType | None:
-        stmt = select(TreatmentType).where(TreatmentType.name == name)
-        return self._session.scalars(stmt).one_or_none()
-
     def list(self, *, include_inactive: bool = True) -> list[TreatmentType]:
         stmt = select(TreatmentType)
         if not include_inactive:

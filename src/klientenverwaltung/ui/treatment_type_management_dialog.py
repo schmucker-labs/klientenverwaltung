@@ -125,7 +125,20 @@ class TreatmentTypeManagementDialog(QDialog):
         has_selection = treatment_type is not None
         self._edit_button.setEnabled(has_selection)
         self._toggle_active_button.setEnabled(has_selection)
-        self._delete_button.setEnabled(has_selection)
+        # A type used by sessions can only be deactivated (CLAUDE.md) - say
+        # so up front instead of offering a delete that then fails.
+        usage_count = (
+            self._service.count_sessions_using(treatment_type.id)
+            if treatment_type is not None
+            else 0
+        )
+        self._delete_button.setEnabled(has_selection and usage_count == 0)
+        self._delete_button.setToolTip(
+            f"Wird {_session_count_phrase(usage_count)} - bitte stattdessen "
+            "deaktivieren."
+            if usage_count
+            else ""
+        )
         if treatment_type is not None:
             self._toggle_active_button.setText(
                 "Aktivieren" if not treatment_type.active else "Deaktivieren"

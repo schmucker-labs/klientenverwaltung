@@ -172,3 +172,18 @@ def test_list_treatment_types_can_exclude_inactive(
 
     all_types = treatment_type_service.list_treatment_types()
     assert treatment_type.id in [t.id for t in all_types]
+
+
+def test_treatment_type_names_are_unique_regardless_of_case(
+    treatment_type_service: TreatmentTypeService,
+) -> None:
+    existing = treatment_type_service.create_treatment_type(name="Meditation")
+    other = treatment_type_service.create_treatment_type(name="Reiki")
+
+    with pytest.raises(ConflictError):
+        treatment_type_service.create_treatment_type(name="meditation")
+    with pytest.raises(ConflictError):
+        treatment_type_service.update_treatment_type(other.id, name="MEDITATION")
+    # renaming a type to a different casing of its own name stays allowed
+    renamed = treatment_type_service.update_treatment_type(existing.id, name="MEDITATION")
+    assert renamed.name == "MEDITATION"

@@ -29,6 +29,18 @@ class TreatmentTypeEntry:
     active: bool
 
 
+def _same_name(repo: TreatmentTypeRepository, name: str) -> TreatmentType | None:
+    """The existing type whose name equals name ignoring case - "Meditation"
+    and "meditation" are the same treatment to the user. Compared in
+    Python: the table holds a handful of rows, and SQLite's own case
+    folding ignores umlauts."""
+    wanted = name.casefold()
+    return next(
+        (existing for existing in repo.list() if existing.name.casefold() == wanted),
+        None,
+    )
+
+
 def _entry(treatment_type: TreatmentType) -> TreatmentTypeEntry:
     return TreatmentTypeEntry(
         id=treatment_type.id,
@@ -49,7 +61,7 @@ class TreatmentTypeService:
         name = self._validate_name(name)
         with self._session_factory() as session:
             repo = TreatmentTypeRepository(session)
-            if repo.get_by_name(name) is not None:
+            if _same_name(repo, name) is not None:
                 raise ConflictError(
                     f'Eine Behandlungsart mit dem Namen "{name}" existiert bereits.'
                 )
@@ -136,7 +148,7 @@ class TreatmentTypeService:
                 raise NotFoundError(
                     f"Behandlungsart mit ID {treatment_type_id} wurde nicht gefunden."
                 )
-            existing = repo.get_by_name(name)
+            existing = _same_name(repo, name)
             if existing is not None and existing.id != treatment_type_id:
                 raise ConflictError(
                     f'Eine Behandlungsart mit dem Namen "{name}" existiert bereits.'
