@@ -234,12 +234,12 @@ class ClientSessionsDialog(QDialog):
         if self._treatment_type_service.has_treatment_types():
             message = (
                 "Es gibt keine aktive Behandlungsart. Bitte legen Sie zuerst eine "
-                "Behandlungsart an (z. B. 'Chakrenausgleich')."
+                "Behandlungsart an (z. B. 'Meditation')."
             )
         else:
             message = (
                 "Es ist noch keine Behandlungsart angelegt. Bitte legen Sie zuerst "
-                "eine Behandlungsart an (z. B. 'Chakrenausgleich')."
+                "eine Behandlungsart an (z. B. 'Meditation')."
             )
         if not ask_create_treatment_type(message, parent=self):
             return False
