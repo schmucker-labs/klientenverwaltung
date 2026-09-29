@@ -11,13 +11,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.models import Client
-from klientenverwaltung.services import (
-    ClientService,
-    MediaService,
-    TreatmentSessionService,
-    TreatmentTypeService,
-)
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_report_history_dialog import (
     ClientReportHistoryDialog,
@@ -38,18 +33,12 @@ class ClientOverviewDialog(QDialog):
 
     def __init__(
         self,
-        client_service: ClientService,
-        treatment_type_service: TreatmentTypeService,
-        treatment_session_service: TreatmentSessionService,
-        media_service: MediaService,
+        services: AppServices,
         client_id: int,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._client_service = client_service
-        self._treatment_type_service = treatment_type_service
-        self._treatment_session_service = treatment_session_service
-        self._media_service = media_service
+        self._services = services
         self._client_id = client_id
 
         self.resize(650, 700)
@@ -94,18 +83,18 @@ class ClientOverviewDialog(QDialog):
         super().done(result)
 
     def _reload(self) -> None:
-        client = self._client_service.get_client(self._client_id)
+        client = self._services.clients.get_client(self._client_id)
         self.setWindowTitle(f"Klient: {client.first_name} {client.last_name}")
         self._archived_label.setVisible(client.archived)
         self._scroll_area.setWidget(self._build_content(client))
         self._update_buttons(client)
 
     def _update_buttons(self, client: Client) -> None:
-        sessions = self._treatment_session_service.list_sessions_for_client(client.id)
+        sessions = self._services.treatment_sessions.list_sessions_for_client(client.id)
         self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
 
         report_count = len(
-            self._treatment_session_service.list_sessions_with_content(client.id)
+            self._services.treatment_sessions.list_sessions_with_content(client.id)
         )
         self._report_button.setText(f"Berichte ({report_count})")
         self._report_button.setEnabled(report_count > 0)
@@ -142,7 +131,7 @@ class ClientOverviewDialog(QDialog):
         return content
 
     def _build_address_block(self, client: Client) -> QWidget:
-        block = self._client_service.build_address_block(client)
+        block = self._services.clients.build_address_block(client)
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -169,7 +158,7 @@ class ClientOverviewDialog(QDialog):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         if client.birth_date is not None:
-            age = self._client_service.compute_age(client.birth_date)
+            age = self._services.clients.compute_age(client.birth_date)
             layout.addWidget(
                 QLabel(
                     f"Geburtsdatum: {client.birth_date.strftime('%d.%m.%Y')} "
@@ -177,7 +166,7 @@ class ClientOverviewDialog(QDialog):
                     panel,
                 )
             )
-        since_date = self._client_service.client_since_date(client.created_at)
+        since_date = self._services.clients.client_since_date(client.created_at)
         layout.addWidget(
             QLabel(f"Klient seit: {since_date.strftime('%d.%m.%Y')}", panel)
         )
@@ -217,7 +206,7 @@ class ClientOverviewDialog(QDialog):
         return panel
 
     def _build_session_dates(self, client: Client) -> QWidget:
-        summary = self._treatment_session_service.get_session_summary(client.id)
+        summary = self._services.treatment_sessions.get_session_summary(client.id)
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -254,10 +243,10 @@ class ClientOverviewDialog(QDialog):
         return label
 
     def _on_report_clicked(self) -> None:
-        client = self._client_service.get_client(self._client_id)
+        client = self._services.clients.get_client(self._client_id)
         client_name = f"{client.first_name} {client.last_name}"
         dialog = ClientReportHistoryDialog(
-            self._treatment_session_service,
+            self._services.treatment_sessions,
             self._client_id,
             client_name,
             parent=self,
@@ -265,12 +254,10 @@ class ClientOverviewDialog(QDialog):
         dialog.exec()
 
     def _on_sessions_clicked(self) -> None:
-        client = self._client_service.get_client(self._client_id)
+        client = self._services.clients.get_client(self._client_id)
         client_name = f"{client.first_name} {client.last_name}"
         dialog = ClientSessionsDialog(
-            self._treatment_type_service,
-            self._treatment_session_service,
-            self._media_service,
+            self._services,
             self._client_id,
             client_name,
             parent=self,
@@ -280,10 +267,7 @@ class ClientOverviewDialog(QDialog):
 
     def _on_edit_clicked(self) -> None:
         dialog = ClientDetailDialog(
-            self._client_service,
-            self._treatment_type_service,
-            self._treatment_session_service,
-            self._media_service,
+            self._services,
             self._client_id,
             parent=self,
         )

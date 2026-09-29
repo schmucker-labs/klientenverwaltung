@@ -8,12 +8,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.models import TreatmentSession
 from klientenverwaltung.services import (
-    MediaService,
     ServiceError,
-    TreatmentSessionService,
-    TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
@@ -52,17 +50,13 @@ class ClientSessionsDialog(QDialog):
 
     def __init__(
         self,
-        treatment_type_service: TreatmentTypeService,
-        treatment_session_service: TreatmentSessionService,
-        media_service: MediaService,
+        services: AppServices,
         client_id: int,
         client_name: str,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._treatment_type_service = treatment_type_service
-        self._treatment_session_service = treatment_session_service
-        self._media_service = media_service
+        self._services = services
         self._client_id = client_id
         self._client_name = client_name
 
@@ -79,7 +73,7 @@ class ClientSessionsDialog(QDialog):
         # only has the (much shorter) column headers to measure against on
         # an empty model, and would size the Datum column too narrow to
         # show a real date once sessions are loaded.
-        sessions = self._treatment_session_service.list_sessions_for_client(
+        sessions = self._services.treatment_sessions.list_sessions_for_client(
             self._client_id
         )
         self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
@@ -161,12 +155,12 @@ class ClientSessionsDialog(QDialog):
         super().done(result)
 
     def _media_counts_for(self, sessions: list[TreatmentSession]) -> dict[int, int]:
-        return self._media_service.count_media_for_sessions(
+        return self._services.media.count_media_for_sessions(
             [session.id for session in sessions]
         )
 
     def _reload_sessions(self) -> None:
-        sessions = self._treatment_session_service.list_sessions_for_client(
+        sessions = self._services.treatment_sessions.list_sessions_for_client(
             self._client_id
         )
         self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
@@ -190,7 +184,7 @@ class ClientSessionsDialog(QDialog):
         if session is None:
             return
         dialog = MediaDialog(
-            self._media_service, session, self._client_name, parent=self
+            self._services.media, session, self._client_name, parent=self
         )
         dialog.exec()
         self._reload_sessions()
@@ -200,7 +194,7 @@ class ClientSessionsDialog(QDialog):
         if session is None:
             return
         dialog = ReportDialog(
-            self._treatment_session_service, session, self._client_name, parent=self
+            self._services.treatment_sessions, session, self._client_name, parent=self
         )
         # Always reload, not just on Accepted: Strg+S saves without closing,
         # and even the "Abbrechen" -> "Speichern" prompt path can save
@@ -213,8 +207,8 @@ class ClientSessionsDialog(QDialog):
         if not self._ensure_active_treatment_type_exists():
             return
         dialog = SessionDialog(
-            self._treatment_type_service,
-            self._treatment_session_service,
+            self._services.treatment_types,
+            self._services.treatment_sessions,
             self._client_id,
             session=None,
             parent=self,
@@ -229,9 +223,9 @@ class ClientSessionsDialog(QDialog):
         away and, if that leaves an active type behind, lets the caller
         continue straight into SessionDialog.
         """
-        if self._treatment_type_service.has_active_treatment_types():
+        if self._services.treatment_types.has_active_treatment_types():
             return True
-        if self._treatment_type_service.has_treatment_types():
+        if self._services.treatment_types.has_treatment_types():
             message = (
                 "Es gibt keine aktive Behandlungsart. Bitte legen Sie zuerst eine "
                 "Behandlungsart an (z. B. 'Meditation')."
@@ -244,10 +238,10 @@ class ClientSessionsDialog(QDialog):
         if not ask_create_treatment_type(message, parent=self):
             return False
         management_dialog = TreatmentTypeManagementDialog(
-            self._treatment_type_service, parent=self
+            self._services.treatment_types, parent=self
         )
         management_dialog.exec()
-        return self._treatment_type_service.has_active_treatment_types()
+        return self._services.treatment_types.has_active_treatment_types()
 
     def _on_edit_session_clicked(self) -> None:
         session = self._selected_session()
@@ -257,8 +251,8 @@ class ClientSessionsDialog(QDialog):
 
     def _edit_session(self, session: TreatmentSession) -> None:
         dialog = SessionDialog(
-            self._treatment_type_service,
-            self._treatment_session_service,
+            self._services.treatment_types,
+            self._services.treatment_sessions,
             self._client_id,
             session=session,
             parent=self,
@@ -280,12 +274,12 @@ class ClientSessionsDialog(QDialog):
             return
         candidate_media_ids = [
             entry.media_id
-            for entry in self._media_service.list_media_for_session(session.id)
+            for entry in self._services.media.list_media_for_session(session.id)
         ]
         try:
-            self._treatment_session_service.delete_session(session.id)
+            self._services.treatment_sessions.delete_session(session.id)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
-        offer_to_delete_now_unused_media(self._media_service, candidate_media_ids, parent=self)
+        offer_to_delete_now_unused_media(self._services.media, candidate_media_ids, parent=self)
         self._reload_sessions()

@@ -11,13 +11,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.services import (
     ClientListEntry,
-    ClientService,
-    MediaService,
     ServiceError,
-    TreatmentSessionService,
-    TreatmentTypeService,
 )
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_overview_dialog import ClientOverviewDialog
@@ -37,17 +34,11 @@ _HEADER_STATE_SETTINGS_KEY = "client_list/header_state"
 class ClientListWidget(QWidget):
     def __init__(
         self,
-        client_service: ClientService,
-        treatment_type_service: TreatmentTypeService,
-        treatment_session_service: TreatmentSessionService,
-        media_service: MediaService,
+        services: AppServices,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._client_service = client_service
-        self._treatment_type_service = treatment_type_service
-        self._treatment_session_service = treatment_session_service
-        self._media_service = media_service
+        self._services = services
 
         self._search_edit = QLineEdit(self)
         self._search_edit.setPlaceholderText("Suche nach Name oder Ort …")
@@ -157,7 +148,7 @@ class ClientListWidget(QWidget):
 
     def _reload(self) -> None:
         search = self._search_edit.text().strip() or None
-        entries = self._client_service.list_clients_with_last_session(
+        entries = self._services.clients.list_clients_with_last_session(
             include_archived=self._show_archived_checkbox.isChecked(), search=search
         )
         self._table_model.set_entries(entries)
@@ -166,10 +157,7 @@ class ClientListWidget(QWidget):
 
     def _open_detail_dialog(self, client_id: int | None) -> None:
         dialog = ClientDetailDialog(
-            self._client_service,
-            self._treatment_type_service,
-            self._treatment_session_service,
-            self._media_service,
+            self._services,
             client_id,
             parent=self,
         )
@@ -187,10 +175,7 @@ class ClientListWidget(QWidget):
 
     def _open_overview_dialog(self, client_id: int) -> None:
         dialog = ClientOverviewDialog(
-            self._client_service,
-            self._treatment_type_service,
-            self._treatment_session_service,
-            self._media_service,
+            self._services,
             client_id,
             parent=self,
         )
@@ -235,9 +220,9 @@ class ClientListWidget(QWidget):
             return
         try:
             if entry.archived:
-                self._client_service.unarchive_client(entry.id)
+                self._services.clients.unarchive_client(entry.id)
             else:
-                self._client_service.archive_client(entry.id)
+                self._services.clients.archive_client(entry.id)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
@@ -255,11 +240,11 @@ class ClientListWidget(QWidget):
         )
         if not confirmed:
             return
-        candidate_media_ids = self._media_service.list_media_ids_for_client(entry.id)
+        candidate_media_ids = self._services.media.list_media_ids_for_client(entry.id)
         try:
-            self._client_service.delete_client(entry.id)
+            self._services.clients.delete_client(entry.id)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
-        offer_to_delete_now_unused_media(self._media_service, candidate_media_ids, parent=self)
+        offer_to_delete_now_unused_media(self._services.media, candidate_media_ids, parent=self)
         self._reload()

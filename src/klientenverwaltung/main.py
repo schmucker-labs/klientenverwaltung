@@ -13,16 +13,12 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
 
 from klientenverwaltung import backup, config, crash_log, storage
+from klientenverwaltung.app_context import AppServices, OpenDatabase
 from klientenverwaltung.services import (
-    ClientService,
     DataUnavailableError,
-    MediaService,
     ServiceError,
-    TreatmentSessionService,
-    TreatmentTypeService,
 )
 from klientenverwaltung.ui.dialogs import ask_retry, ask_retry_or_setup, show_error
 from klientenverwaltung.ui.icons import get_app_icon, load_pixmap
@@ -240,28 +236,20 @@ def _run_startup(app: QApplication, splash: QSplashScreen) -> None:
         app.exit(0)
         return
     drive_root, engine = acquired
-    app.aboutToQuit.connect(engine.dispose)
+    database = OpenDatabase(engine, drive_root)
+    # database.close, not engine.dispose: after a password change the
+    # engine in use is a different one than the one opened here.
+    app.aboutToQuit.connect(database.close)
 
     if not _prepare_database(engine, drive_root):
         splash.close()
         app.exit(0)
         return
 
-    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
-    client_service = ClientService(session_factory)
-    treatment_type_service = TreatmentTypeService(session_factory)
-    treatment_session_service = TreatmentSessionService(session_factory)
-    media_service = MediaService(session_factory, drive_root)
-    media_service.cleanup_orphaned_part_files()
+    services = AppServices.for_database(database)
+    services.media.cleanup_orphaned_part_files()
 
-    window = MainWindow(
-        client_service,
-        treatment_type_service,
-        treatment_session_service,
-        media_service,
-        engine=engine,
-        drive_root=drive_root,
-    )
+    window = MainWindow(services, database)
     window.show()
     _fade_out_splash(splash)
 

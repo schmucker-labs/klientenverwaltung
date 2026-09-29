@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.models import Base, Client, TreatmentSession, TreatmentType
 from klientenverwaltung.services import (
     ClientService,
@@ -105,3 +106,18 @@ def media_service(
     drive_root = tmp_path / "drive"
     drive_root.mkdir()
     return MediaService(session_factory, drive_root)
+
+
+@pytest.fixture
+def app_services(
+    client_service: ClientService,
+    treatment_type_service: TreatmentTypeService,
+    treatment_session_service: TreatmentSessionService,
+    media_service: MediaService,
+) -> AppServices:
+    return AppServices(
+        clients=client_service,
+        treatment_types=treatment_type_service,
+        treatment_sessions=treatment_session_service,
+        media=media_service,
+    )

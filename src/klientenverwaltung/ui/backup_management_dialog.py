@@ -14,9 +14,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy import Engine
 
 from klientenverwaltung import backup, config, storage
+from klientenverwaltung.app_context import OpenDatabase
 from klientenverwaltung.backup import RestorableBackup
 from klientenverwaltung.ui.backup_table_model import COLUMN_TITLES, BackupTableModel
 from klientenverwaltung.ui.dialogs import (
@@ -40,12 +40,10 @@ _FILENAME_COLUMN = 1
 
 
 class BackupManagementDialog(QDialog):
-    def __init__(
-        self, engine: Engine, drive_root: Path, parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, database: OpenDatabase, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._engine = engine
-        self._drive_root = drive_root
+        self._database = database
+        self._drive_root = database.drive_root
         self.setWindowTitle("Sicherungen verwalten")
         self.setModal(True)
         # Wide enough that a full backup filename plus the other three
@@ -204,7 +202,7 @@ class BackupManagementDialog(QDialog):
 
     def _on_backup_now_clicked(self) -> None:
         try:
-            backup.create_backup(self._engine, self._current_folder())
+            backup.create_backup(self._database.engine, self._current_folder())
         except backup.BackupError as exc:
             show_error(str(exc), parent=self)
             return
@@ -253,13 +251,15 @@ class BackupManagementDialog(QDialog):
         if not confirmed:
             return
 
-        current_password = self._engine.url.password or ""
+        current_password = self._database.password
         backup_password = self._verified_backup_password(entry, current_password)
         if backup_password is None:
             return
 
         try:
-            backup.create_pre_restore_backup(self._engine, self._current_folder())
+            backup.create_pre_restore_backup(
+                self._database.engine, self._current_folder()
+            )
         except backup.BackupError as exc:
             show_error(
                 "Die aktuelle Datenbank konnte vor der Wiederherstellung "
@@ -272,8 +272,8 @@ class BackupManagementDialog(QDialog):
         def _reencrypt_with_current_password(copy: Path) -> None:
             storage.rekey_database_file(copy, backup_password, current_password)
 
-        db_path = self._drive_root / storage.DB_FILENAME
-        self._engine.dispose()
+        db_path = self._database.db_path
+        self._database.engine.dispose()
         try:
             backup.restore_backup(
                 entry.path,
@@ -294,6 +294,9 @@ class BackupManagementDialog(QDialog):
             self._reload_table()
             return
 
+        # The file under this run's engine was just replaced: nothing may
+        # touch it again before the restart (not even a backup on exit).
+        self._database.close()
         show_info(
             "Die Sicherung wurde wiederhergestellt. Das Programm wird jetzt "
             "beendet. Bitte starten Sie es danach von Hand neu.",

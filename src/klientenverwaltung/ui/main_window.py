@@ -1,17 +1,9 @@
-from pathlib import Path
-
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QActionGroup, QCloseEvent
 from PySide6.QtWidgets import QLabel, QMainWindow, QToolButton
-from sqlalchemy import Engine
 
 from klientenverwaltung import AUTHOR, __version__, backup, config
-from klientenverwaltung.services import (
-    ClientService,
-    MediaService,
-    TreatmentSessionService,
-    TreatmentTypeService,
-)
+from klientenverwaltung.app_context import AppServices, OpenDatabase
 from klientenverwaltung.ui.backup_management_dialog import BackupManagementDialog
 from klientenverwaltung.ui.client_list_widget import ClientListWidget
 from klientenverwaltung.ui.dialogs import show_about, show_error
@@ -34,33 +26,15 @@ _THEME_ICON_SIZE = 20
 
 
 class MainWindow(QMainWindow):
-    def __init__(
-        self,
-        client_service: ClientService,
-        treatment_type_service: TreatmentTypeService,
-        treatment_session_service: TreatmentSessionService,
-        media_service: MediaService,
-        *,
-        engine: Engine,
-        drive_root: Path,
-    ) -> None:
+    def __init__(self, services: AppServices, database: OpenDatabase) -> None:
         super().__init__()
-        self._treatment_type_service = treatment_type_service
-        self._media_service = media_service
-        self._engine = engine
-        self._drive_root = drive_root
+        self._services = services
+        self._database = database
         self._theme_mode = load_theme_mode()
 
         self.setWindowTitle("Klientenverwaltung")
         self.resize(1000, 700)
-        self.setCentralWidget(
-            ClientListWidget(
-                client_service,
-                treatment_type_service,
-                treatment_session_service,
-                media_service,
-            )
-        )
+        self.setCentralWidget(ClientListWidget(services))
         self._build_menu()
         self._build_status_bar()
         self._refresh_theme_controls()
@@ -144,7 +118,7 @@ class MainWindow(QMainWindow):
         if configured is None:
             self._backup_status_label.setText("Keine Sicherungen eingerichtet")
             return
-        latest = backup.most_recent_backup([self._drive_root, configured])
+        latest = backup.most_recent_backup([self._database.drive_root, configured])
         if latest is None:
             self._backup_status_label.setText("Letzte Sicherung: keine vorhanden")
             return
@@ -158,12 +132,12 @@ class MainWindow(QMainWindow):
 
     def _open_treatment_type_dialog(self) -> None:
         dialog = TreatmentTypeManagementDialog(
-            self._treatment_type_service, parent=self
+            self._services.treatment_types, parent=self
         )
         dialog.exec()
 
     def _open_media_overview_dialog(self) -> None:
-        dialog = MediaOverviewDialog(self._media_service, parent=self)
+        dialog = MediaOverviewDialog(self._services.media, parent=self)
         dialog.exec()
 
     def _open_about_dialog(self) -> None:
@@ -176,16 +150,16 @@ class MainWindow(QMainWindow):
         )
 
     def _on_backup_now_clicked(self) -> None:
-        folder = config.get_backup_folder_path() or self._drive_root
+        folder = config.get_backup_folder_path() or self._database.drive_root
         try:
-            backup.create_backup(self._engine, folder)
+            backup.create_backup(self._database.engine, folder)
         except backup.BackupError as exc:
             show_error(str(exc), parent=self)
             return
         self._update_backup_status_label()
 
     def _on_manage_backups_clicked(self) -> None:
-        dialog = BackupManagementDialog(self._engine, self._drive_root, parent=self)
+        dialog = BackupManagementDialog(self._database, parent=self)
         dialog.exec()
         self._update_backup_status_label()
 

@@ -16,13 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.models import Client
 from klientenverwaltung.services import (
-    ClientService,
-    MediaService,
     ServiceError,
-    TreatmentSessionService,
-    TreatmentTypeService,
 )
 from klientenverwaltung.ui.client_sessions_dialog import ClientSessionsDialog
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
@@ -47,18 +44,12 @@ class ClientDetailDialog(QDialog):
 
     def __init__(
         self,
-        client_service: ClientService,
-        treatment_type_service: TreatmentTypeService,
-        treatment_session_service: TreatmentSessionService,
-        media_service: MediaService,
+        services: AppServices,
         client_id: int | None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._client_service = client_service
-        self._treatment_type_service = treatment_type_service
-        self._treatment_session_service = treatment_session_service
-        self._media_service = media_service
+        self._services = services
         self._client_id = client_id
 
         self.resize(700, 800)
@@ -68,7 +59,7 @@ class ClientDetailDialog(QDialog):
         self._build_ui()
 
         if client_id is not None:
-            client = self._client_service.get_client(client_id)
+            client = self._services.clients.get_client(client_id)
             self._populate_form(client)
             self.setWindowTitle(f"Klient: {client.first_name} {client.last_name}")
         else:
@@ -248,7 +239,7 @@ class ClientDetailDialog(QDialog):
             )
             self._sessions_next_date_label.setText("")
             return
-        sessions = self._treatment_session_service.list_sessions_for_client(
+        sessions = self._services.treatment_sessions.list_sessions_for_client(
             self._client_id
         )
         self._sessions_button.setEnabled(True)
@@ -258,7 +249,7 @@ class ClientDetailDialog(QDialog):
         # TreatmentSessionRepository.get_last_session_dates()/
         # get_upcoming_sessions() via this one service method), so the two
         # views can never disagree about what counts as "last" vs "next".
-        summary = self._treatment_session_service.get_session_summary(
+        summary = self._services.treatment_sessions.get_session_summary(
             self._client_id
         )
         self._sessions_last_date_label.setText(
@@ -276,10 +267,10 @@ class ClientDetailDialog(QDialog):
         values = self._collect_form_values()
         try:
             if self._client_id is None:
-                client = self._client_service.create_client(**values)
+                client = self._services.clients.create_client(**values)
                 self._client_id = client.id
             else:
-                client = self._client_service.update_client(self._client_id, **values)
+                client = self._services.clients.update_client(self._client_id, **values)
         except ServiceError as exc:
             show_error(str(exc), parent=self)
             return
@@ -302,9 +293,7 @@ class ClientDetailDialog(QDialog):
                     return
         client_name = f"{self._first_name_edit.text()} {self._last_name_edit.text()}"
         dialog = ClientSessionsDialog(
-            self._treatment_type_service,
-            self._treatment_session_service,
-            self._media_service,
+            self._services,
             self._client_id,
             client_name.strip(),
             parent=self,
