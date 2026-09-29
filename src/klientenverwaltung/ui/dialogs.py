@@ -3,6 +3,18 @@ from typing import Literal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QMessageBox, QWidget
 
+_NAMES_SHOWN = 5
+
+
+def summarize_names(names: list[str]) -> str:
+    """A readable list for a message box: the first few names, then how
+    many more - a client with dozens of media files must not produce a
+    message taller than the screen."""
+    if len(names) <= _NAMES_SHOWN:
+        return ", ".join(names)
+    shown = ", ".join(names[:_NAMES_SHOWN])
+    return f"{shown} und {len(names) - _NAMES_SHOWN} weitere"
+
 
 def show_about(
     program_name: str,
@@ -284,7 +296,7 @@ def ask_delete_now_unused_media(
     box.setIcon(QMessageBox.Icon.Question)
     box.setWindowTitle("Nicht mehr verwendete Mediendateien")
     box.setText(
-        f"{count_phrase} nicht mehr verwendet: {', '.join(names)}. "
+        f"{count_phrase} nicht mehr verwendet: {summarize_names(names)}. "
         "Jetzt endgültig löschen?"
     )
     delete_button = box.addButton("Löschen", QMessageBox.ButtonRole.DestructiveRole)

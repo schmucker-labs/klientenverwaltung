@@ -11,7 +11,7 @@ COLUMN_TITLES = ("Name", "Art", "Größe", "Hinzugefügt am", "Verwendet")
 USED_COLUMN = 4
 
 
-def _display_name(entry: MediaOverviewEntry) -> str:
+def display_name(entry: MediaOverviewEntry) -> str:
     if entry.media_id is None:
         return "Unbekannte Datei"
     if entry.file_missing:
@@ -20,7 +20,7 @@ def _display_name(entry: MediaOverviewEntry) -> str:
 
 
 def _name_sort_key(entry: MediaOverviewEntry) -> object:
-    return german_sort_key(_display_name(entry))
+    return german_sort_key(display_name(entry))
 
 
 _SORT_KEYS: dict[int, Callable[[MediaOverviewEntry], object]] = {
@@ -82,7 +82,7 @@ class MediaOverviewTableModel(QAbstractTableModel):
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         if column == 0:
-            return _display_name(entry)
+            return display_name(entry)
         if column == 1:
             return KIND_LABELS[entry.media_kind]
         if column == 2:

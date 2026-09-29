@@ -13,11 +13,16 @@ from PySide6.QtWidgets import (
 )
 
 from klientenverwaltung.services import MediaOverviewEntry, MediaService, ServiceError
-from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
+from klientenverwaltung.ui.dialogs import (
+    ask_confirm_delete,
+    show_error,
+    summarize_names,
+)
 from klientenverwaltung.ui.media_overview_table_model import (
     COLUMN_TITLES,
     USED_COLUMN,
     MediaOverviewTableModel,
+    display_name,
 )
 from klientenverwaltung.ui.media_table_model import format_size_bytes
 from klientenverwaltung.ui.rename_media_dialog import RenameMediaDialog
@@ -245,8 +250,11 @@ class MediaOverviewDialog(QDialog):
         entries = self._selected_entries()
         if not entries or any(e.usage_count > 0 for e in entries):
             return
+        total_size = format_size_bytes(sum(entry.size_bytes for entry in entries))
+        count_phrase = "1 Datei wird" if len(entries) == 1 else f"{len(entries)} Dateien werden"
         confirmed = ask_confirm_delete(
-            "Die Dateien werden endgültig von der Datenplatte gelöscht.",
+            f"{count_phrase} ({total_size}) endgültig von der Datenplatte gelöscht: "
+            f"{summarize_names([display_name(entry) for entry in entries])}.",
             title="Mediendateien löschen",
             parent=self,
         )
@@ -268,7 +276,7 @@ class MediaOverviewDialog(QDialog):
             names = [f.original_filename for f in failures] + failed_unknown
             show_error(
                 "Folgende Dateien konnten nicht gelöscht werden, vermutlich weil "
-                "sie gerade geöffnet sind: " + ", ".join(names),
+                "sie gerade geöffnet sind: " + summarize_names(names),
                 parent=self,
             )
         self._reload()

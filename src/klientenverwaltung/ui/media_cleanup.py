@@ -3,7 +3,11 @@ from collections.abc import Sequence
 from PySide6.QtWidgets import QWidget
 
 from klientenverwaltung.services import MediaService, ServiceError
-from klientenverwaltung.ui.dialogs import ask_delete_now_unused_media, show_error
+from klientenverwaltung.ui.dialogs import (
+    ask_delete_now_unused_media,
+    show_error,
+    summarize_names,
+)
 
 
 def offer_to_delete_now_unused_media(
@@ -37,6 +41,6 @@ def offer_to_delete_now_unused_media(
         failed_names = [media.original_filename for media in failures]
         show_error(
             "Folgende Dateien konnten nicht gelöscht werden, vermutlich weil sie "
-            "gerade geöffnet sind: " + ", ".join(failed_names),
+            "gerade geöffnet sind: " + summarize_names(failed_names),
             parent=parent,
         )
