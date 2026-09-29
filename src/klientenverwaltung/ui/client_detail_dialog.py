@@ -71,6 +71,11 @@ class ClientDetailDialog(QDialog):
         self._original_values = self._collect_form_values()
         self._update_sessions_button()
 
+    @property
+    def client_id(self) -> int | None:
+        """The client shown - also set once a new client was saved."""
+        return self._client_id
+
     def _build_ui(self) -> None:
         self._salutation_combo = QComboBox(self)
         self._salutation_combo.setEditable(True)

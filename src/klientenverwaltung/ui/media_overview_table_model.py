@@ -5,6 +5,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from klientenverwaltung.services.media_service import MediaOverviewEntry
 from klientenverwaltung.ui.media_table_model import KIND_LABELS, format_size_bytes
+from klientenverwaltung.ui.sorting import german_sort_key
 
 COLUMN_TITLES = ("Name", "Art", "Größe", "Hinzugefügt am", "Verwendet")
 USED_COLUMN = 4
@@ -18,8 +19,8 @@ def _display_name(entry: MediaOverviewEntry) -> str:
     return entry.original_filename or ""
 
 
-def _name_sort_key(entry: MediaOverviewEntry) -> str:
-    return _display_name(entry).casefold()
+def _name_sort_key(entry: MediaOverviewEntry) -> object:
+    return german_sort_key(_display_name(entry))
 
 
 _SORT_KEYS: dict[int, Callable[[MediaOverviewEntry], object]] = {

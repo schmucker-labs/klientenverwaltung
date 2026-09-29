@@ -5,6 +5,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFont
 
 from klientenverwaltung.services import ClientListEntry, UpcomingAppointment
+from klientenverwaltung.ui.sorting import german_sort_key
 from klientenverwaltung.ui.theme import current_palette
 
 COLUMN_TITLES = (
@@ -40,8 +41,8 @@ def _next_appointment_tooltip(appointments: list[UpcomingAppointment]) -> str | 
     return "\n".join(_format_appointment(a) for a in appointments)
 
 
-def _text_key(value: str | None) -> str:
-    return (value or "").casefold()
+def _text_key(value: str | None) -> object:
+    return german_sort_key(value)
 
 
 def _date_key(value: datetime | None) -> tuple[bool, datetime]:

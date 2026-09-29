@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -124,3 +125,15 @@ def app_services(
         treatment_sessions=treatment_session_service,
         media=media_service,
     )
+
+
+@pytest.fixture
+def isolated_qsettings(qapp: QApplication, tmp_path: Path) -> Iterator[None]:
+    """Points every QSettings() at a fresh INI file in tmp_path, so a test
+    neither sees saved window/column state nor leaves any behind."""
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(
+        QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "qsettings")
+    )
+    yield
+    QSettings.setDefaultFormat(QSettings.Format.NativeFormat)

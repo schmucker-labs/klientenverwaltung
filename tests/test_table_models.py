@@ -84,3 +84,30 @@ def test_inactive_treatment_types_use_the_active_themes_color(
     color = model.data(model.index(0, 0), Qt.ItemDataRole.ForegroundRole)
 
     assert color == QColor(DARK_PALETTE.text_archived)
+
+
+def _entry(entry_id: int, last_name: str) -> ClientListEntry:
+    return ClientListEntry(
+        id=entry_id,
+        salutation=None,
+        first_name="Anna",
+        last_name=last_name,
+        city=None,
+        phone=None,
+        archived=False,
+        last_session_date=None,
+        upcoming_appointments=[],
+    )
+
+
+def test_client_names_sort_in_german_order(qapp: QApplication) -> None:
+    """Umlauts sort with their base letter (Ö with O), not after Z."""
+    model = ClientTableModel()
+    model.set_entries(
+        [_entry(1, "Zimmer"), _entry(2, "Özdemir"), _entry(3, "Muster"), _entry(4, "Otto")]
+    )
+
+    model.sort(1, Qt.SortOrder.AscendingOrder)
+
+    names = [model.entry_at(row).last_name for row in range(model.rowCount())]
+    assert names == ["Muster", "Otto", "Özdemir", "Zimmer"]

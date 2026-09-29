@@ -63,6 +63,8 @@ class ClientListWidget(QWidget):
         )
         if not restored:
             self._table_view.setColumnWidth(0, 80)
+            # Qt's default indicator is column 0 (Anrede), descending.
+            header.setSortIndicator(1, Qt.SortOrder.AscendingOrder)
         # Nächster Termin is the one open-ended column, so it gets whatever
         # space is left over.
         finalize_column_widths(header, self._table_model.columnCount(), 6, restored)
@@ -148,14 +150,28 @@ class ClientListWidget(QWidget):
         else:
             self._archive_button.setText("Archivieren")
 
-    def _reload(self) -> None:
+    def _reload(self, select_client_id: int | None = None) -> None:
+        """Reloads the list, keeping the selected client selected (or
+        selecting select_client_id, e.g. a client just created)."""
+        if select_client_id is None:
+            selected = self._selected_entry()
+            select_client_id = selected.id if selected is not None else None
         search = self._search_edit.text().strip() or None
         entries = self._services.clients.list_clients_with_last_session(
             include_archived=self._show_archived_checkbox.isChecked(), search=search
         )
         self._table_model.set_entries(entries)
         self._apply_current_sort()
+        if select_client_id is not None:
+            self._select_client(select_client_id)
         self._update_button_states()
+
+    def _select_client(self, client_id: int) -> None:
+        for row in range(self._table_model.rowCount()):
+            if self._table_model.entry_at(row).id == client_id:
+                self._table_view.selectRow(row)
+                self._table_view.scrollTo(self._table_model.index(row, 0))
+                return
 
     def _open_detail_dialog(self, client_id: int | None) -> None:
         dialog = ClientDetailDialog(
@@ -164,7 +180,8 @@ class ClientListWidget(QWidget):
             parent=self,
         )
         dialog.exec()
-        self._reload()
+        # A client created in the dialog gets selected, so it can be found.
+        self._reload(select_client_id=dialog.client_id)
 
     def _on_new_clicked(self) -> None:
         self._open_detail_dialog(None)
