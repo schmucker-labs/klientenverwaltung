@@ -24,7 +24,6 @@ from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _GEOMETRY_SETTINGS_KEY = "setup_wizard/geometry"
-_SETUP_STATE_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class _CheckboxLabel(QLabel):
@@ -87,12 +86,12 @@ class _DrivePage(QWizardPage):
 
     def initializePage(self) -> None:
         self._drive_list.clear()
-        for drive in storage.list_available_drives():
-            item = QListWidgetItem(storage.describe_drive(drive))
-            item.setData(Qt.ItemDataRole.UserRole, drive)
-            # Read once here, not on every isComplete()/selection change:
-            # each check touches the drive, which can be slow.
-            item.setData(_SETUP_STATE_ROLE, storage.drive_setup_state(drive))
+        # Probed once, all drives at once and time-bounded - not on every
+        # isComplete()/selection change: touching a drive can be slow, and
+        # an offline network drive can hang far longer.
+        for info in storage.inspect_drives(storage.list_available_drives()):
+            item = QListWidgetItem(info.description)
+            item.setData(Qt.ItemDataRole.UserRole, info)
             self._drive_list.addItem(item)
         self._update_warning()
 
@@ -100,13 +99,17 @@ class _DrivePage(QWizardPage):
         self._update_warning()
         self.completeChanged.emit()
 
-    def _selected_drive(self) -> Path | None:
+    def _selected_info(self) -> storage.DriveInfo | None:
         item = self._drive_list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 
+    def _selected_drive(self) -> Path | None:
+        info = self._selected_info()
+        return info.root if info is not None else None
+
     def _selected_setup_state(self) -> storage.DriveSetupState | None:
-        item = self._drive_list.currentItem()
-        return item.data(_SETUP_STATE_ROLE) if item is not None else None
+        info = self._selected_info()
+        return info.setup_state if info is not None else None
 
     def _selected_drive_display(self) -> str | None:
         """The exact text shown for the selected drive in the list above -
@@ -116,12 +119,19 @@ class _DrivePage(QWizardPage):
         return item.text() if item is not None else None
 
     def _update_warning(self) -> None:
-        drive = self._selected_drive()
-        state = self._selected_setup_state()
-        if drive is None:
+        info = self._selected_info()
+        if info is None:
             self._warning_label.setVisible(False)
             return
-        if state is storage.DriveSetupState.SET_UP:
+        drive = info.root
+        state = info.setup_state
+        if state is None:
+            self._warning_label.setText(
+                f"Das Laufwerk {drive} reagiert nicht (zum Beispiel ein nicht "
+                "erreichbares Netzlaufwerk). Bitte ein anderes Laufwerk wählen."
+            )
+            self._warning_label.setVisible(True)
+        elif state is storage.DriveSetupState.SET_UP:
             self._warning_label.setText(
                 f"Dieses Laufwerk ({drive}) ist bereits als Datenplatte "
                 "eingerichtet. Bitte ein anderes Laufwerk wählen."
@@ -140,7 +150,7 @@ class _DrivePage(QWizardPage):
                 "gefunden. Sie wird mit den folgenden Schritten abgeschlossen."
             )
             self._warning_label.setVisible(True)
-        elif not storage.is_removable_drive(drive):
+        elif not info.removable:
             self._warning_label.setText(
                 f"Windows erkennt {drive} nicht als Wechseldatenträger. Falls dies "
                 "die interne Festplatte dieses Computers ist, bitte ein anderes "

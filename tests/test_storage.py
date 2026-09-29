@@ -1,4 +1,5 @@
 import shutil
+import time
 import uuid
 from pathlib import Path
 
@@ -80,11 +81,10 @@ class TestFindDataDriveAmong:
 
         def slow_reader(path: Path) -> str | None:
             if path == unresponsive_drive:
-                import time
-
                 time.sleep(2)
             return storage._read_identifier_file(path)
 
+        started = time.monotonic()
         found = storage._find_data_drive_among(
             [good_drive, unresponsive_drive],
             last_known_path=None,
@@ -93,6 +93,32 @@ class TestFindDataDriveAmong:
         )
 
         assert found == good_drive
+        # The search must not wait for the hung drive (e.g. an offline
+        # network drive letter) - that is the whole point of the timeout.
+        assert time.monotonic() - started < 1.0
+
+    def test_unresponsive_last_known_drive_does_not_block_the_search(
+        self, tmp_path: Path
+    ) -> None:
+        good_drive = _make_drive_with_identifier(tmp_path / "good")
+        unresponsive_last_known = tmp_path / "unresponsive"
+        unresponsive_last_known.mkdir()
+
+        def slow_reader(path: Path) -> str | None:
+            if path == unresponsive_last_known:
+                time.sleep(2)
+            return storage._read_identifier_file(path)
+
+        started = time.monotonic()
+        found = storage._find_data_drive_among(
+            [good_drive],
+            last_known_path=unresponsive_last_known,
+            reader=slow_reader,
+            timeout=0.1,
+        )
+
+        assert found == good_drive
+        assert time.monotonic() - started < 1.0
 
 
 class TestSetUpDataDrive:

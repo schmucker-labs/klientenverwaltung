@@ -1,11 +1,12 @@
 import ctypes
 import string
 import sys
+import threading
+import time
 import uuid
 from collections.abc import Callable, Iterator, Sequence
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import contextmanager
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
@@ -99,40 +100,53 @@ def _read_identifier_file(drive_root: Path) -> str | None:
     return content
 
 
-def _read_identifier_file_bounded(
-    drive_root: Path,
-    *,
-    reader: Callable[[Path], str | None],
-    timeout: float,
-) -> str | None:
-    """Reads the identifier file with a timeout, so one unresponsive drive can't hang the search."""
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(reader, drive_root)
+def _call_for_each_within[T](
+    func: Callable[[Path], T], roots: Sequence[Path], timeout: float
+) -> dict[Path, T]:
+    """Calls func(root) for every root concurrently and returns the results
+    that arrived within timeout seconds; a root whose call is still running
+    then (an offline network drive can hang for 20-60 s), or that raised,
+    is simply absent from the result.
+
+    Each call runs on its own daemon thread that is never waited for past
+    the deadline. A ThreadPoolExecutor cannot do this: leaving its `with`
+    block (or interpreter exit) joins every worker, so one hung drive
+    would still block the caller - and the GUI thread with it - until the
+    read finally gave up.
+    """
+    results: dict[Path, T] = {}
+    lock = threading.Lock()
+
+    def _run(root: Path) -> None:
         try:
-            return future.result(timeout=timeout)
-        except FutureTimeoutError:
-            return None
+            value = func(root)
+        except Exception:  # noqa: BLE001 - an unreadable drive is just skipped
+            return
+        with lock:
+            results[root] = value
+
+    threads = [
+        threading.Thread(target=_run, args=(root,), daemon=True, name=f"probe {root}")
+        for root in roots
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + timeout
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    with lock:
+        return dict(results)
 
 
-def _scan_for_identifier(
-    candidate_roots: Sequence[Path],
+def _roots_with_identifier(
+    roots: Sequence[Path],
     *,
     reader: Callable[[Path], str | None],
     timeout: float,
 ) -> list[Path]:
-    if not candidate_roots:
-        return []
-    candidates: list[Path] = []
-    with ThreadPoolExecutor(max_workers=len(candidate_roots)) as pool:
-        future_to_root = {pool.submit(reader, root): root for root in candidate_roots}
-        for future, root in future_to_root.items():
-            try:
-                content = future.result(timeout=timeout)
-            except FutureTimeoutError:
-                continue
-            if content is not None:
-                candidates.append(root)
-    return candidates
+    """The roots (in their given order) whose identifier file could be read in time."""
+    contents = _call_for_each_within(reader, roots, timeout)
+    return [root for root in roots if contents.get(root) is not None]
 
 
 def _find_data_drive_among(
@@ -149,24 +163,23 @@ def _find_data_drive_among(
     verify that an unresponsive drive is skipped rather than blocking the
     whole search.
     """
-    if last_known_path is not None:
-        content = _read_identifier_file_bounded(
-            last_known_path, reader=reader, timeout=timeout
-        )
-        if content is not None:
-            return last_known_path
+    if last_known_path is not None and _roots_with_identifier(
+        [last_known_path], reader=reader, timeout=timeout
+    ):
+        return last_known_path
 
-    candidates = _scan_for_identifier(candidate_roots, reader=reader, timeout=timeout)
+    candidates = _roots_with_identifier(candidate_roots, reader=reader, timeout=timeout)
 
     if not candidates:
         raise DataDriveNotFoundError(
-            "Datenplatte wurde nicht gefunden. Bitte Datenplatte anschliessen und erneut versuchen."
+            "Datenplatte wurde nicht gefunden. Bitte Datenplatte anschließen und "
+            "erneut versuchen."
         )
     if len(candidates) > 1:
         joined = ", ".join(str(path) for path in candidates)
         raise MultipleDataDrivesFoundError(
             f"Es wurden mehrere Laufwerke mit einer Kennungsdatei gefunden: {joined}. "
-            "Bitte nur die richtige Datenplatte anschliessen.",
+            "Bitte nur die richtige Datenplatte anschließen.",
             candidates,
         )
     return candidates[0]
@@ -366,6 +379,38 @@ def drive_setup_state(drive_root: Path) -> DriveSetupState:
 def drive_already_set_up(drive_root: Path) -> bool:
     """True if drive_root carries a valid Kennungsdatei *and* a database."""
     return drive_setup_state(drive_root) is DriveSetupState.SET_UP
+
+
+@dataclass(frozen=True)
+class DriveInfo:
+    """What the setup wizard shows about one drive letter."""
+
+    root: Path
+    description: str
+    setup_state: DriveSetupState | None
+    """None if the drive did not answer in time (e.g. an offline network drive)."""
+    removable: bool
+
+
+def inspect_drives(
+    drives: Sequence[Path], timeout: float = DRIVE_CHECK_TIMEOUT_SECONDS
+) -> list[DriveInfo]:
+    """Label, setup state and media type of every drive, probed all at once
+    and bounded by timeout - one unresponsive drive must not freeze the
+    setup wizard."""
+
+    def _probe(root: Path) -> tuple[str, DriveSetupState, bool]:
+        return describe_drive(root), drive_setup_state(root), is_removable_drive(root)
+
+    probed = _call_for_each_within(_probe, drives, timeout)
+    infos: list[DriveInfo] = []
+    for root in drives:
+        if root in probed:
+            description, setup_state, removable = probed[root]
+            infos.append(DriveInfo(root, description, setup_state, removable))
+        else:
+            infos.append(DriveInfo(root, f"{root} (reagiert nicht)", None, False))
+    return infos
 
 
 @contextmanager
