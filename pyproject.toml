@@ -1,7 +1,7 @@
 [project]
 name = "klientenverwaltung"
 version = "0.1.0"
-description = "Add your description here"
+description = "Klientenverwaltung für eine Einzelpraxis (Klienten, Sitzungen, Berichte, Medien) mit SQLCipher-verschlüsselter Datenbank auf einer externen Datenplatte."
 readme = "README.md"
 authors = [
     { name = "schmucker-labs", email = "334107768+schmucker-labs@users.noreply.github.com" }

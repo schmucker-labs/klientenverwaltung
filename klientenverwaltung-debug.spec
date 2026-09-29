@@ -48,7 +48,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # No UPX: compressed executables trigger antivirus false positives far
+    # more often, and the size saving is not worth that for this user.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
