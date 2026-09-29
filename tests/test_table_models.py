@@ -5,8 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
-from klientenverwaltung.models import TreatmentType
-from klientenverwaltung.services import ClientListEntry
+from klientenverwaltung.services import ClientListEntry, TreatmentTypeEntry
 from klientenverwaltung.ui.backup_table_model import BackupTableModel
 from klientenverwaltung.ui.client_table_model import ClientTableModel
 from klientenverwaltung.ui.media_table_model import MediaTableModel
@@ -78,7 +77,9 @@ def test_inactive_treatment_types_use_the_active_themes_color(
     dark_theme: None,
 ) -> None:
     model = TreatmentTypeTableModel()
-    model.set_types([TreatmentType(id=1, name="Reiki", active=False)])
+    model.set_types(
+        [TreatmentTypeEntry(id=1, name="Reiki", description=None, active=False)]
+    )
 
     color = model.data(model.index(0, 0), Qt.ItemDataRole.ForegroundRole)
 

@@ -1,5 +1,6 @@
 from klientenverwaltung.services.client_service import (
     ClientAddressBlock,
+    ClientDetails,
     ClientListEntry,
     ClientService,
     UpcomingAppointment,
@@ -20,16 +21,22 @@ from klientenverwaltung.services.media_service import (
     MediaService,
     MediaUsageEntry,
     SessionMediaEntry,
+    StoredMedia,
     classify_media_kind,
 )
 from klientenverwaltung.services.treatment_session_service import (
+    SessionEntry,
     SessionSummary,
     TreatmentSessionService,
 )
-from klientenverwaltung.services.treatment_type_service import TreatmentTypeService
+from klientenverwaltung.services.treatment_type_service import (
+    TreatmentTypeEntry,
+    TreatmentTypeService,
+)
 
 __all__ = [
     "ClientAddressBlock",
+    "ClientDetails",
     "ClientListEntry",
     "ClientService",
     "ConflictError",
@@ -42,10 +49,13 @@ __all__ = [
     "MediaUsageEntry",
     "NotFoundError",
     "ServiceError",
+    "SessionEntry",
     "SessionMediaEntry",
     "SessionOverlapError",
     "SessionSummary",
+    "StoredMedia",
     "TreatmentSessionService",
+    "TreatmentTypeEntry",
     "TreatmentTypeService",
     "UpcomingAppointment",
     "ValidationError",

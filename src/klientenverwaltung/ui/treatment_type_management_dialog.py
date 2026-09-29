@@ -9,8 +9,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.models import TreatmentType
-from klientenverwaltung.services import ServiceError, TreatmentTypeService
+from klientenverwaltung.services import (
+    ServiceError,
+    TreatmentTypeEntry,
+    TreatmentTypeService,
+)
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_deactivate,
     ask_confirm_delete,
@@ -111,7 +114,7 @@ class TreatmentTypeManagementDialog(QDialog):
 
         self._reload()
 
-    def _selected_type(self) -> TreatmentType | None:
+    def _selected_type(self) -> TreatmentTypeEntry | None:
         rows = self._table_view.selectionModel().selectedRows()
         if len(rows) != 1:
             return None

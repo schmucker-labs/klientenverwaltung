@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlalchemy.orm import Session, sessionmaker
 
 from klientenverwaltung.models import TreatmentType
@@ -17,6 +19,25 @@ from klientenverwaltung.services.transaction import database_errors_as, transact
 _LOAD_ERROR = "Die Behandlungsarten konnten nicht geladen werden."
 
 
+@dataclass(frozen=True)
+class TreatmentTypeEntry:
+    """A treatment type as the UI shows and edits it (a plain value)."""
+
+    id: int
+    name: str
+    description: str | None
+    active: bool
+
+
+def _entry(treatment_type: TreatmentType) -> TreatmentTypeEntry:
+    return TreatmentTypeEntry(
+        id=treatment_type.id,
+        name=treatment_type.name,
+        description=treatment_type.description,
+        active=treatment_type.active,
+    )
+
+
 class TreatmentTypeService:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -24,7 +45,7 @@ class TreatmentTypeService:
     @database_errors_as("Behandlungsart konnte nicht gespeichert werden.")
     def create_treatment_type(
         self, *, name: str, description: str | None = None
-    ) -> TreatmentType:
+    ) -> TreatmentTypeEntry:
         name = self._validate_name(name)
         with self._session_factory() as session:
             repo = TreatmentTypeRepository(session)
@@ -37,28 +58,31 @@ class TreatmentTypeService:
                 session, "Behandlungsart konnte nicht gespeichert werden."
             ):
                 repo.add(treatment_type)
-        return treatment_type
+            return _entry(treatment_type)
 
     @database_errors_as(_LOAD_ERROR)
-    def get_treatment_type(self, treatment_type_id: int) -> TreatmentType:
+    def get_treatment_type(self, treatment_type_id: int) -> TreatmentTypeEntry:
         with self._session_factory() as session:
             treatment_type = TreatmentTypeRepository(session).get_by_id(
                 treatment_type_id
             )
-        if treatment_type is None:
-            raise NotFoundError(
-                f"Behandlungsart mit ID {treatment_type_id} wurde nicht gefunden."
-            )
-        return treatment_type
+            if treatment_type is None:
+                raise NotFoundError(
+                    f"Behandlungsart mit ID {treatment_type_id} wurde nicht gefunden."
+                )
+            return _entry(treatment_type)
 
     @database_errors_as(_LOAD_ERROR)
     def list_treatment_types(
         self, *, include_inactive: bool = True
-    ) -> list[TreatmentType]:
+    ) -> list[TreatmentTypeEntry]:
         with self._session_factory() as session:
-            return TreatmentTypeRepository(session).list(
-                include_inactive=include_inactive
-            )
+            return [
+                _entry(treatment_type)
+                for treatment_type in TreatmentTypeRepository(session).list(
+                    include_inactive=include_inactive
+                )
+            ]
 
     @database_errors_as(_LOAD_ERROR)
     def has_treatment_types(self) -> bool:
@@ -81,7 +105,7 @@ class TreatmentTypeService:
     @database_errors_as(_LOAD_ERROR)
     def list_selectable_for_session(
         self, *, current_treatment_type_id: int | None = None
-    ) -> list[TreatmentType]:
+    ) -> list[TreatmentTypeEntry]:
         """Active treatment types, plus the given one even if it has since been deactivated.
 
         Used to populate a session's treatment-type dropdown: new sessions may
@@ -98,12 +122,12 @@ class TreatmentTypeService:
                 current = repo.get_by_id(current_treatment_type_id)
                 if current is not None:
                     types = [*types, current]
-            return types
+            return [_entry(treatment_type) for treatment_type in types]
 
     @database_errors_as("Behandlungsart konnte nicht gespeichert werden.")
     def update_treatment_type(
         self, treatment_type_id: int, *, name: str, description: str | None = None
-    ) -> TreatmentType:
+    ) -> TreatmentTypeEntry:
         name = self._validate_name(name)
         with self._session_factory() as session:
             repo = TreatmentTypeRepository(session)
@@ -123,7 +147,7 @@ class TreatmentTypeService:
                 session, "Behandlungsart konnte nicht gespeichert werden."
             ):
                 pass
-        return treatment_type
+            return _entry(treatment_type)
 
     @database_errors_as(_LOAD_ERROR)
     def count_sessions_using(self, treatment_type_id: int) -> int:

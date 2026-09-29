@@ -8,11 +8,14 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from klientenverwaltung.app_context import AppServices
-from klientenverwaltung.models import Base, Client, TreatmentSession, TreatmentType
+from klientenverwaltung.models import Base
 from klientenverwaltung.services import (
+    ClientDetails,
     ClientService,
     MediaService,
+    SessionEntry,
     TreatmentSessionService,
+    TreatmentTypeEntry,
     TreatmentTypeService,
 )
 
@@ -72,21 +75,21 @@ def treatment_session_service(
 
 
 @pytest.fixture
-def client(client_service: ClientService) -> Client:
+def client(client_service: ClientService) -> ClientDetails:
     return client_service.create_client(first_name="Anna", last_name="Muster")
 
 
 @pytest.fixture
-def treatment_type(treatment_type_service: TreatmentTypeService) -> TreatmentType:
+def treatment_type(treatment_type_service: TreatmentTypeService) -> TreatmentTypeEntry:
     return treatment_type_service.create_treatment_type(name="Chakrenausgleich")
 
 
 @pytest.fixture
 def treatment_session(
     treatment_session_service: TreatmentSessionService,
-    client: Client,
-    treatment_type: TreatmentType,
-) -> TreatmentSession:
+    client: ClientDetails,
+    treatment_type: TreatmentTypeEntry,
+) -> SessionEntry:
     return treatment_session_service.create_session(
         client_id=client.id,
         treatment_type_id=treatment_type.id,

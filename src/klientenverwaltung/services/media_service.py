@@ -52,6 +52,31 @@ def classify_media_kind(filename: str) -> MediaKind:
 
 
 @dataclass(frozen=True)
+class StoredMedia:
+    """One media file known to the database, as a plain value."""
+
+    id: int
+    stored_filename: str
+    original_filename: str
+    media_kind: MediaKind
+    size_bytes: int
+    sha256: str
+    created_at: datetime
+
+
+def _stored_media(media: Media) -> StoredMedia:
+    return StoredMedia(
+        id=media.id,
+        stored_filename=media.stored_filename,
+        original_filename=media.original_filename,
+        media_kind=media.media_kind,  # type: ignore[arg-type]
+        size_bytes=media.size_bytes,
+        sha256=media.sha256,
+        created_at=media.created_at,
+    )
+
+
+@dataclass(frozen=True)
 class SessionMediaEntry:
     """One row of a session's media list (Auftrag C1's Medienfenster) -
     original_filename/media_kind/size_bytes describe the underlying file,
@@ -93,7 +118,7 @@ class ImportOutcome:
     """
 
     status: Literal["imported", "linked_existing", "already_linked", "cancelled"]
-    media: Media | None
+    media: StoredMedia | None
     original_filename: str
 
 
@@ -219,7 +244,7 @@ class MediaService:
                 if match is not None:
                     if media_repo.is_linked(session_id, match.id):
                         return ImportOutcome(
-                            "already_linked", match, match.original_filename
+                            "already_linked", _stored_media(match), match.original_filename
                         )
                     if confirm_duplicate is None or not confirm_duplicate(
                         match.original_filename
@@ -231,7 +256,7 @@ class MediaService:
                     ):
                         pass
                     return ImportOutcome(
-                        "linked_existing", match, match.original_filename
+                        "linked_existing", _stored_media(match), match.original_filename
                     )
 
             media = self._copy_and_store(
@@ -244,7 +269,7 @@ class MediaService:
             media_repo.link(session_id, media.id)
             with transaction(session, "Datei konnte nicht gespeichert werden."):
                 pass
-        return ImportOutcome("imported", media, source_path.name)
+            return ImportOutcome("imported", _stored_media(media), source_path.name)
 
     def _copy_and_store(
         self,
@@ -314,7 +339,7 @@ class MediaService:
             with transaction(session, "Verknüpfung konnte nicht entfernt werden."):
                 pass
 
-    def resolve_media_path(self, media: Media) -> Path:
+    def resolve_media_path(self, media: StoredMedia) -> Path:
         return self._media_dir / media.stored_filename
 
     def resolve_media_path_for_entry(self, entry: SessionMediaEntry) -> Path:
@@ -324,7 +349,7 @@ class MediaService:
         return self._media_dir / stored_filename
 
     @database_errors_as("Datei konnte nicht umbenannt werden.")
-    def rename_media(self, media_id: int, new_original_filename: str) -> Media:
+    def rename_media(self, media_id: int, new_original_filename: str) -> StoredMedia:
         new_name = new_original_filename.strip()
         # The visible part is everything before the last dot - a name that
         # is only whitespace plus an extension (e.g. "   .jpg") must still
@@ -346,29 +371,29 @@ class MediaService:
             media.original_filename = new_name
             with transaction(session, "Datei konnte nicht umbenannt werden."):
                 pass
-        return media
+            return _stored_media(media)
 
     @database_errors_as(_LOAD_ERROR)
-    def find_now_unused(self, media_ids: Sequence[int]) -> list[Media]:
+    def find_now_unused(self, media_ids: Sequence[int]) -> list[StoredMedia]:
         if not media_ids:
             return []
         with self._session_factory() as session:
             repo = MediaRepository(session)
             usage = repo.usage_counts_for_media(media_ids)
-            unused: list[Media] = []
+            unused: list[StoredMedia] = []
             for media_id in media_ids:
                 if usage.get(media_id, 0) > 0:
                     continue
                 media = repo.get_by_id(media_id)
                 if media is not None:
-                    unused.append(media)
+                    unused.append(_stored_media(media))
         return unused
 
     @database_errors_as("Mediendateien konnten nicht gelöscht werden.")
-    def delete_unused_media(self, media_ids: Sequence[int]) -> list[Media]:
+    def delete_unused_media(self, media_ids: Sequence[int]) -> list[StoredMedia]:
         if not media_ids:
             return []
-        failures: list[Media] = []
+        failures: list[StoredMedia] = []
         with self._session_factory() as session:
             repo = MediaRepository(session)
             usage = repo.usage_counts_for_media(media_ids)
@@ -382,7 +407,7 @@ class MediaService:
                 try:
                     path.unlink(missing_ok=True)
                 except OSError:
-                    failures.append(media)
+                    failures.append(_stored_media(media))
                     continue
                 repo.delete(media)
             with transaction(session, "Mediendateien konnten nicht gelöscht werden."):

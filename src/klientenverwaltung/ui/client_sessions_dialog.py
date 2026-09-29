@@ -10,9 +10,9 @@ from PySide6.QtWidgets import (
 )
 
 from klientenverwaltung.app_context import AppServices
-from klientenverwaltung.models import TreatmentSession
 from klientenverwaltung.services import (
     ServiceError,
+    SessionEntry,
 )
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
@@ -156,7 +156,7 @@ class ClientSessionsDialog(QDialog):
         save_geometry(self, _GEOMETRY_SETTINGS_KEY)
         super().done(result)
 
-    def _media_counts_for(self, sessions: list[TreatmentSession]) -> dict[int, int]:
+    def _media_counts_for(self, sessions: list[SessionEntry]) -> dict[int, int]:
         return self._services.media.count_media_for_sessions(
             [session.id for session in sessions]
         )
@@ -168,7 +168,7 @@ class ClientSessionsDialog(QDialog):
         self._session_table_model.set_sessions(sessions, self._media_counts_for(sessions))
         self._update_button_states()
 
-    def _selected_session(self) -> TreatmentSession | None:
+    def _selected_session(self) -> SessionEntry | None:
         rows = self._session_table_view.selectionModel().selectedRows()
         if len(rows) != 1:
             return None
@@ -255,7 +255,7 @@ class ClientSessionsDialog(QDialog):
             return
         self._edit_session(session)
 
-    def _edit_session(self, session: TreatmentSession) -> None:
+    def _edit_session(self, session: SessionEntry) -> None:
         dialog = SessionDialog(
             self._services.treatment_types,
             self._services.treatment_sessions,
@@ -272,7 +272,7 @@ class ClientSessionsDialog(QDialog):
             return
         confirmed = ask_confirm_delete(
             f"Sitzung vom {session.date.strftime('%d.%m.%Y %H:%M')} "
-            f"({session.treatment_type.name}) unwiderruflich löschen?",
+            f"({session.treatment_type_name}) unwiderruflich löschen?",
             title="Sitzung löschen",
             parent=self,
         )

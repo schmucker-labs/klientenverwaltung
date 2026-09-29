@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from klientenverwaltung.app_context import AppServices
-from klientenverwaltung.models import Client
+from klientenverwaltung.services import ClientDetails
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_report_history_dialog import (
     ClientReportHistoryDialog,
@@ -89,7 +89,7 @@ class ClientOverviewDialog(QDialog):
         self._scroll_area.setWidget(self._build_content(client))
         self._update_buttons(client)
 
-    def _update_buttons(self, client: Client) -> None:
+    def _update_buttons(self, client: ClientDetails) -> None:
         sessions = self._services.treatment_sessions.list_sessions_for_client(client.id)
         self._sessions_button.setText(f"Sitzungen ({len(sessions)})")
 
@@ -102,7 +102,7 @@ class ClientOverviewDialog(QDialog):
             "Noch kein Bericht vorhanden" if report_count == 0 else ""
         )
 
-    def _build_content(self, client: Client) -> QWidget:
+    def _build_content(self, client: ClientDetails) -> QWidget:
         content = QWidget()
         layout = QVBoxLayout(content)
 
@@ -130,7 +130,7 @@ class ClientOverviewDialog(QDialog):
         layout.addStretch()
         return content
 
-    def _build_address_block(self, client: Client) -> QWidget:
+    def _build_address_block(self, client: ClientDetails) -> QWidget:
         block = self._services.clients.build_address_block(client)
         panel = QWidget()
         layout = QVBoxLayout(panel)
@@ -153,7 +153,7 @@ class ClientOverviewDialog(QDialog):
 
         return panel
 
-    def _build_birth_and_since_lines(self, client: Client) -> QWidget:
+    def _build_birth_and_since_lines(self, client: ClientDetails) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -184,7 +184,7 @@ class ClientOverviewDialog(QDialog):
         layout.addWidget(content_label)
         return panel
 
-    def _build_further_details(self, client: Client) -> QWidget | None:
+    def _build_further_details(self, client: ClientDetails) -> QWidget | None:
         if not client.referral_source and not client.consent_date:
             return None
         panel = QWidget()
@@ -205,7 +205,7 @@ class ClientOverviewDialog(QDialog):
             )
         return panel
 
-    def _build_session_dates(self, client: Client) -> QWidget:
+    def _build_session_dates(self, client: ClientDetails) -> QWidget:
         summary = self._services.treatment_sessions.get_session_summary(client.id)
         panel = QWidget()
         layout = QVBoxLayout(panel)

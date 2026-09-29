@@ -37,6 +37,44 @@ class SessionSummary:
     next_session_date: datetime | None
 
 
+@dataclass(frozen=True)
+class SessionEntry:
+    """One treatment session as the UI shows and edits it - a plain value,
+    so nothing outside the service layer depends on ORM objects (or on a
+    relationship having been eager-loaded before its session closed)."""
+
+    id: int
+    client_id: int
+    treatment_type_id: int
+    treatment_type_name: str
+    date: datetime
+    duration_minutes: int
+    report: str | None
+    impulses: str | None
+
+
+def _session_entry(
+    treatment_session: TreatmentSession, treatment_type_name: str | None = None
+) -> SessionEntry:
+    """Must run while the session is still open. treatment_type_name is
+    passed explicitly by writes (the relationship may still hold the type
+    from before a change); list reads eager-load it instead."""
+    return SessionEntry(
+        id=treatment_session.id,
+        client_id=treatment_session.client_id,
+        treatment_type_id=treatment_session.treatment_type_id,
+        treatment_type_name=(
+            treatment_type_name
+            if treatment_type_name is not None
+            else treatment_session.treatment_type.name
+        ),
+        date=treatment_session.date,
+        duration_minutes=treatment_session.duration_minutes,
+        report=treatment_session.report,
+        impulses=treatment_session.impulses,
+    )
+
+
 class _VisibleTextExtractor(HTMLParser):
     """Collects human-visible text from an HTML fragment, ignoring markup
     and any <script>/<style> content (a Qt rich-text document always
@@ -100,7 +138,7 @@ class TreatmentSessionService:
         treatment_type_id: int,
         date: datetime,
         duration_minutes: int,
-    ) -> TreatmentSession:
+    ) -> SessionEntry:
         self._validate_duration(duration_minutes)
         date = _to_minute_precision(date)
         with self._session_factory() as session:
@@ -125,32 +163,43 @@ class TreatmentSessionService:
             )
             with transaction(session, "Sitzung konnte nicht gespeichert werden."):
                 repo.add(treatment_session)
-        return treatment_session
+            assert treatment_type is not None  # checked above
+            return _session_entry(treatment_session, treatment_type.name)
 
     @database_errors_as(_LOAD_ERROR)
-    def get_session(self, session_id: int) -> TreatmentSession:
+    def get_session(self, session_id: int) -> SessionEntry:
         with self._session_factory() as session:
             treatment_session = TreatmentSessionRepository(session).get_by_id(
                 session_id
             )
-        if treatment_session is None:
-            raise NotFoundError(f"Sitzung mit ID {session_id} wurde nicht gefunden.")
-        return treatment_session
+            if treatment_session is None:
+                raise NotFoundError(
+                    f"Sitzung mit ID {session_id} wurde nicht gefunden."
+                )
+            return _session_entry(treatment_session)
 
     @database_errors_as(_LOAD_ERROR)
-    def list_sessions_for_client(self, client_id: int) -> list[TreatmentSession]:
+    def list_sessions_for_client(self, client_id: int) -> list[SessionEntry]:
         with self._session_factory() as session:
-            return TreatmentSessionRepository(session).list_for_client(client_id)
+            return [
+                _session_entry(treatment_session)
+                for treatment_session in TreatmentSessionRepository(
+                    session
+                ).list_for_client(client_id)
+            ]
 
     @database_errors_as(_LOAD_ERROR)
-    def list_sessions_with_content(self, client_id: int) -> list[TreatmentSession]:
+    def list_sessions_with_content(self, client_id: int) -> list[SessionEntry]:
         """Sessions with a Bericht or Impulse entered (Auftrag A2's report
         window), newest first - feeds both the Berichtsverlauf dialog and
         the "Berichte (n)" count on the Klientenübersicht (Auftrag B2)."""
         with self._session_factory() as session:
-            return TreatmentSessionRepository(session).list_with_content_for_client(
-                client_id
-            )
+            return [
+                _session_entry(treatment_session)
+                for treatment_session in TreatmentSessionRepository(
+                    session
+                ).list_with_content_for_client(client_id)
+            ]
 
     @database_errors_as(_LOAD_ERROR)
     def get_session_summary(
@@ -174,7 +223,7 @@ class TreatmentSessionService:
         treatment_type_id: int,
         date: datetime,
         duration_minutes: int,
-    ) -> TreatmentSession:
+    ) -> SessionEntry:
         self._validate_duration(duration_minutes)
         date = _to_minute_precision(date)
         with self._session_factory() as session:
@@ -203,12 +252,14 @@ class TreatmentSessionService:
             treatment_session.duration_minutes = duration_minutes
             with transaction(session, "Sitzung konnte nicht gespeichert werden."):
                 pass
-        return treatment_session
+            return _session_entry(
+                treatment_session, self._treatment_type_name(session, treatment_type_id)
+            )
 
     @database_errors_as("Bericht konnte nicht gespeichert werden.")
     def save_report(
         self, session_id: int, *, report: str | None, impulses: str | None
-    ) -> TreatmentSession:
+    ) -> SessionEntry:
         """Saves a session's Bericht/Impulse (the report window from Auftrag
         A2). Blank content - including an untouched Qt rich-text document
         containing only whitespace - is normalized to None.
@@ -224,7 +275,10 @@ class TreatmentSessionService:
             treatment_session.impulses = _normalize_html(impulses)
             with transaction(session, "Bericht konnte nicht gespeichert werden."):
                 pass
-        return treatment_session
+            return _session_entry(
+                treatment_session,
+                self._treatment_type_name(session, treatment_session.treatment_type_id),
+            )
 
     @database_errors_as("Sitzung konnte nicht gelöscht werden.")
     def delete_session(self, session_id: int) -> None:
@@ -237,6 +291,12 @@ class TreatmentSessionService:
                 )
             with transaction(session, "Sitzung konnte nicht gelöscht werden."):
                 repo.delete(treatment_session)
+
+    @staticmethod
+    def _treatment_type_name(session: Session, treatment_type_id: int) -> str:
+        treatment_type = TreatmentTypeRepository(session).get_by_id(treatment_type_id)
+        assert treatment_type is not None  # guaranteed by the foreign key
+        return treatment_type.name
 
     @staticmethod
     def _validate_duration(duration_minutes: int) -> None:

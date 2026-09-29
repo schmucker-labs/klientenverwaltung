@@ -11,8 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.models import TreatmentSession
-from klientenverwaltung.services import TreatmentSessionService
+from klientenverwaltung.services import SessionEntry, TreatmentSessionService
 from klientenverwaltung.ui.growing_text_edit import GrowingTextEdit
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
@@ -71,7 +70,7 @@ class ClientReportHistoryDialog(QDialog):
         save_geometry(self, _GEOMETRY_SETTINGS_KEY)
         super().done(result)
 
-    def _build_session_panel(self, session: TreatmentSession) -> QWidget:
+    def _build_session_panel(self, session: SessionEntry) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -79,7 +78,7 @@ class ClientReportHistoryDialog(QDialog):
         heading = QLabel(
             "Sitzung vom "
             f"{session.date.strftime('%d.%m.%Y, %H:%M')} Uhr – "
-            f"{session.treatment_type.name}",
+            f"{session.treatment_type_name}",
             panel,
         )
         heading.setWordWrap(True)

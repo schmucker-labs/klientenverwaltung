@@ -18,8 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from klientenverwaltung.app_context import AppServices
-from klientenverwaltung.models import Client
 from klientenverwaltung.services import (
+    ClientDetails,
     ServiceError,
 )
 from klientenverwaltung.ui.client_sessions_dialog import ClientSessionsDialog
@@ -200,7 +200,7 @@ class ClientDetailDialog(QDialog):
         self._save_splitter_state()
         super().done(result)
 
-    def _populate_form(self, client: Client) -> None:
+    def _populate_form(self, client: ClientDetails) -> None:
         self._salutation_combo.setCurrentText(client.salutation or "")
         self._first_name_edit.setText(client.first_name)
         self._last_name_edit.setText(client.last_name)

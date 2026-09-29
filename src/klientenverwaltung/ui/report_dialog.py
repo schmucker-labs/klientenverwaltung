@@ -33,8 +33,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.models import TreatmentSession
-from klientenverwaltung.services import ServiceError, TreatmentSessionService
+from klientenverwaltung.services import (
+    ServiceError,
+    SessionEntry,
+    TreatmentSessionService,
+)
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
 from klientenverwaltung.ui.growing_text_edit import GrowingTextEdit
 from klientenverwaltung.ui.theme import ColorPalette, get_palette, load_theme_mode
@@ -229,7 +232,7 @@ class ReportDialog(QDialog):
     def __init__(
         self,
         treatment_session_service: TreatmentSessionService,
-        session: TreatmentSession,
+        session: SessionEntry,
         client_name: str,
         parent: QWidget | None = None,
     ) -> None:
@@ -245,7 +248,7 @@ class ReportDialog(QDialog):
         heading = QLabel(
             "Bericht zur Sitzung vom "
             f"{session.date.strftime('%d.%m.%Y, %H:%M')} Uhr – "
-            f"{session.treatment_type.name}",
+            f"{session.treatment_type_name}",
             self,
         )
         heading.setWordWrap(True)

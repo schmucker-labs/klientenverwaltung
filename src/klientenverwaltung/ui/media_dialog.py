@@ -14,8 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.models import TreatmentSession
-from klientenverwaltung.services import ServiceError
+from klientenverwaltung.services import ServiceError, SessionEntry
 from klientenverwaltung.services.media_service import (
     AUDIO_EXTENSIONS,
     IMAGE_EXTENSIONS,
@@ -67,7 +66,7 @@ class MediaDialog(QDialog):
     def __init__(
         self,
         media_service: MediaService,
-        session: TreatmentSession,
+        session: SessionEntry,
         client_name: str,
         parent: QWidget | None = None,
     ) -> None:
@@ -88,7 +87,7 @@ class MediaDialog(QDialog):
         heading = QLabel(
             "Medien zur Sitzung vom "
             f"{session.date.strftime('%d.%m.%Y, %H:%M')} Uhr – "
-            f"{session.treatment_type.name}",
+            f"{session.treatment_type_name}",
             self,
         )
         heading.setWordWrap(True)

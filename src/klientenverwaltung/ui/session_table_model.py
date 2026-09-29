@@ -3,7 +3,7 @@ from datetime import datetime
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QFont
 
-from klientenverwaltung.models import TreatmentSession
+from klientenverwaltung.services import SessionEntry
 
 COLUMN_TITLES = ("Datum", "Behandlungsart", "Dauer (Min.)", "Medien", "Bericht")
 MEDIA_COLUMN = 3
@@ -14,18 +14,18 @@ _REPORT_CHECK = "✓"  # check mark
 class SessionTableModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
-        self._sessions: list[TreatmentSession] = []
+        self._sessions: list[SessionEntry] = []
         self._media_counts: dict[int, int] = {}
 
     def set_sessions(
-        self, sessions: list[TreatmentSession], media_counts: dict[int, int]
+        self, sessions: list[SessionEntry], media_counts: dict[int, int]
     ) -> None:
         self.beginResetModel()
         self._sessions = sessions
         self._media_counts = media_counts
         self.endResetModel()
 
-    def session_at(self, row: int) -> TreatmentSession:
+    def session_at(self, row: int) -> SessionEntry:
         return self._sessions[row]
 
     def rowCount(self, parent: QModelIndex | None = None) -> int:
@@ -79,7 +79,7 @@ class SessionTableModel(QAbstractTableModel):
         if column == 0:
             return session.date.strftime("%d.%m.%Y %H:%M")
         if column == 1:
-            return session.treatment_type.name
+            return session.treatment_type_name
         if column == 2:
             return str(session.duration_minutes)
         if column == MEDIA_COLUMN:

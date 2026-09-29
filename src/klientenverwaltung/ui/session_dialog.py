@@ -12,9 +12,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from klientenverwaltung.models import TreatmentSession
 from klientenverwaltung.services import (
     ServiceError,
+    SessionEntry,
     TreatmentSessionService,
     TreatmentTypeService,
 )
@@ -41,7 +41,7 @@ class SessionDialog(QDialog):
         treatment_type_service: TreatmentTypeService,
         treatment_session_service: TreatmentSessionService,
         client_id: int,
-        session: TreatmentSession | None = None,
+        session: SessionEntry | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)

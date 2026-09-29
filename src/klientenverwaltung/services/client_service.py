@@ -81,6 +81,52 @@ class ClientAddressBlock:
 
 
 @dataclass(frozen=True)
+class ClientDetails:
+    """A client's full record, as the UI shows and edits it - a plain value,
+    so nothing outside the service layer depends on ORM objects."""
+
+    id: int
+    salutation: str | None
+    first_name: str
+    last_name: str
+    birth_date: date | None
+    street: str | None
+    postal_code: str | None
+    city: str | None
+    phone: str | None
+    email: str | None
+    concern: str | None
+    referral_source: str | None
+    consent_date: date | None
+    notes: str | None
+    archived: bool
+    created_at: datetime
+
+
+def _client_details(client: Client) -> ClientDetails:
+    """Must run while client's session is still open: created_at is a
+    server default, loaded on first access."""
+    return ClientDetails(
+        id=client.id,
+        salutation=client.salutation,
+        first_name=client.first_name,
+        last_name=client.last_name,
+        birth_date=client.birth_date,
+        street=client.street,
+        postal_code=client.postal_code,
+        city=client.city,
+        phone=client.phone,
+        email=client.email,
+        concern=client.concern,
+        referral_source=client.referral_source,
+        consent_date=client.consent_date,
+        notes=client.notes,
+        archived=client.archived,
+        created_at=client.created_at,
+    )
+
+
+@dataclass(frozen=True)
 class ClientListEntry:
     """One row of the client list: exactly the fields that screen shows."""
 
@@ -116,7 +162,7 @@ class ClientService:
         referral_source: str | None = None,
         consent_date: date | None = None,
         notes: str | None = None,
-    ) -> Client:
+    ) -> ClientDetails:
         first_name, last_name = self._validate_name(first_name, last_name)
         salutation = self._normalize_optional(salutation)
         street = self._normalize_optional(street)
@@ -136,28 +182,26 @@ class ClientService:
             consent_date=consent_date,
             notes=notes,
         )
-        with (
-            self._session_factory() as session,
-            transaction(session, "Klient konnte nicht gespeichert werden."),
-        ):
-            ClientRepository(session).add(client)
-        return client
+        with self._session_factory() as session:
+            with transaction(session, "Klient konnte nicht gespeichert werden."):
+                ClientRepository(session).add(client)
+            return _client_details(client)
 
     @database_errors_as(_LOAD_ERROR)
-    def get_client(self, client_id: int) -> Client:
+    def get_client(self, client_id: int) -> ClientDetails:
         with self._session_factory() as session:
             client = ClientRepository(session).get_by_id(client_id)
-        if client is None:
-            raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
-        return client
+            if client is None:
+                raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
+            return _client_details(client)
 
     @database_errors_as(_LOAD_ERROR)
     def list_clients(
         self, *, include_archived: bool = False, search: str | None = None
-    ) -> list[Client]:
+    ) -> list[ClientDetails]:
         with self._session_factory() as session:
             clients = ClientRepository(session).list(include_archived=include_archived)
-        return _filter_by_search(clients, search)
+            return [_client_details(client) for client in _filter_by_search(clients, search)]
 
     @database_errors_as(_LOAD_ERROR)
     def list_clients_with_last_session(
@@ -212,7 +256,7 @@ class ClientService:
         referral_source: str | None = None,
         consent_date: date | None = None,
         notes: str | None = None,
-    ) -> Client:
+    ) -> ClientDetails:
         first_name, last_name = self._validate_name(first_name, last_name)
         salutation = self._normalize_optional(salutation)
         street = self._normalize_optional(street)
@@ -236,7 +280,7 @@ class ClientService:
             client.notes = notes
             with transaction(session, "Klient konnte nicht gespeichert werden."):
                 pass
-        return client
+            return _client_details(client)
 
     @database_errors_as("Klient konnte nicht aktualisiert werden.")
     def archive_client(self, client_id: int) -> None:
@@ -299,7 +343,7 @@ class ClientService:
         return age
 
     @staticmethod
-    def build_address_block(client: Client) -> ClientAddressBlock:
+    def build_address_block(client: ClientDetails) -> ClientAddressBlock:
         name_line = " ".join(
             part
             for part in (client.salutation, client.first_name, client.last_name)

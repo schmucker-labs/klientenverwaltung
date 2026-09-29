@@ -1,7 +1,7 @@
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFont
 
-from klientenverwaltung.models import TreatmentType
+from klientenverwaltung.services import TreatmentTypeEntry
 from klientenverwaltung.ui.theme import current_palette
 
 COLUMN_TITLES = ("Name", "Beschreibung", "Status")
@@ -10,14 +10,14 @@ COLUMN_TITLES = ("Name", "Beschreibung", "Status")
 class TreatmentTypeTableModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
-        self._types: list[TreatmentType] = []
+        self._types: list[TreatmentTypeEntry] = []
 
-    def set_types(self, types: list[TreatmentType]) -> None:
+    def set_types(self, types: list[TreatmentTypeEntry]) -> None:
         self.beginResetModel()
         self._types = types
         self.endResetModel()
 
-    def type_at(self, row: int) -> TreatmentType:
+    def type_at(self, row: int) -> TreatmentTypeEntry:
         return self._types[row]
 
     def rowCount(self, parent: QModelIndex | None = None) -> int:

@@ -302,17 +302,29 @@ def test_delete_session(
         treatment_session_service.get_session(treatment_session.id)
 
 
-def test_list_sessions_for_client_allows_reading_treatment_type_name_after_close(
+def test_session_entries_carry_the_treatment_type_name(
     treatment_session_service: TreatmentSessionService,
+    treatment_type_service: TreatmentTypeService,
     treatment_session: TreatmentSession,
     treatment_type: TreatmentType,
 ) -> None:
-    """treatment_type must be eager-loaded, or this raises DetachedInstanceError."""
+    """Returned as a plain value - no relationship to lazy-load after the
+    session closed (which raised DetachedInstanceError) - and current after
+    the type was changed."""
     sessions = treatment_session_service.list_sessions_for_client(
         treatment_session.client_id
     )
+    assert sessions[0].treatment_type_name == treatment_type.name
 
-    assert sessions[0].treatment_type.name == treatment_type.name
+    other_type = treatment_type_service.create_treatment_type(name="Reiki")
+    updated = treatment_session_service.update_session(
+        treatment_session.id,
+        treatment_type_id=other_type.id,
+        date=treatment_session.date,
+        duration_minutes=treatment_session.duration_minutes,
+    )
+    assert updated.treatment_type_name == "Reiki"
+    assert treatment_session_service.get_session(updated.id).treatment_type_name == "Reiki"
 
 
 def test_list_sessions_for_client_orders_newest_first(
