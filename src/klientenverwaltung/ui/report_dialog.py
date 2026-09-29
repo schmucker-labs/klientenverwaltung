@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 from PySide6.QtCore import QMimeData, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import (
     QColor,
@@ -11,7 +13,11 @@ from PySide6.QtGui import (
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
+    QTextDocumentFragment,
     QTextFormat,
+    QTextFragment,
+    QTextFrame,
+    QTextTable,
 )
 from PySide6.QtWidgets import (
     QComboBox,
@@ -57,49 +63,139 @@ _STRIPPED_CHAR_PROPERTIES = (
 )
 
 
-def strip_disallowed_formatting(document: QTextDocument) -> None:
-    """Removes foreground/background color and any explicit font family or
-    point/pixel size from every character in `document`, in place.
+_ANCHOR_PROPERTIES = (
+    QTextFormat.Property.IsAnchor,
+    QTextFormat.Property.AnchorHref,
+    QTextFormat.Property.AnchorName,
+    # Qt styles a pasted link as underlined - that is link styling, not
+    # an underline the user chose, so it goes with the link.
+    QTextFormat.Property.FontUnderline,
+    QTextFormat.Property.TextUnderlineStyle,
+)
 
-    Bold, italic, underline and the heading level are left untouched - the
-    heading level's visual size comes from a relative FontSizeAdjustment
+
+def strip_disallowed_formatting(document: QTextDocument) -> None:
+    """Reduces `document` in place to text with bold, italic, underline and
+    heading levels - everything a paste (typically from Word) may bring in
+    beyond that is removed:
+
+    - tables are flattened into one paragraph per non-empty cell, keeping
+      their text and its allowed formatting;
+    - images are removed: a picture pasted from Word is only a reference to
+      a file in Word's temp folder on the laptop - stored in a report it
+      would keep health-related images outside the encrypted database, and
+      break as soon as Word cleans up;
+    - links become plain text;
+    - foreground/background color and any explicit font family or
+      point/pixel size are cleared from every character.
+
+    The heading level's visual size comes from a relative FontSizeAdjustment
     (see _apply_heading_level()), a different QTextFormat property than
     the absolute FontPointSize/FontPixelSize cleared here, so clearing the
-    latter never undoes a heading's size.
+    latter never undoes a heading's size. Lists are kept.
 
-    Two passes, deliberately never interleaved: the first only reads the
-    block/fragment structure and collects (start, end, cleaned_format)
-    triples; the second applies them via a plain QTextCursor. Calling
-    cursor.setCharFormat() while a QTextBlock/fragment iterator from the
-    first pass is still in use invalidates that iterator - Qt restructures
-    the block's internal fragment map on every format change - which hung
+    Every step first only reads the block/fragment structure and collects
+    positions, then changes the document via a plain QTextCursor - never
+    interleaved. Changing a format or the text while a QTextBlock/fragment
+    iterator is still in use invalidates that iterator - Qt restructures
+    the block's internal fragment map on every change - which hung
     (observed) or crashed (reported with real, multi-run Word paste
-    content) rather than raising a catchable Python exception. Character
-    positions stay valid across the whole second pass regardless: a
-    format-only change never inserts or removes characters.
+    content) rather than raising a catchable Python exception.
     """
+    _flatten_tables(document)
+    _remove_images(document)
+
     ranges_to_clear: list[tuple[int, int, QTextCharFormat]] = []
+    for fragment in _fragments(document):
+        fmt = fragment.charFormat()
+        is_link = fmt.isAnchor() or fmt.hasProperty(QTextFormat.Property.AnchorHref)
+        if is_link or any(fmt.hasProperty(prop) for prop in _STRIPPED_CHAR_PROPERTIES):
+            for prop in _STRIPPED_CHAR_PROPERTIES:
+                fmt.clearProperty(prop)
+            if is_link:
+                for prop in _ANCHOR_PROPERTIES:
+                    fmt.clearProperty(prop)
+            ranges_to_clear.append(
+                (fragment.position(), fragment.position() + fragment.length(), fmt)
+            )
+
+    # Format-only changes: character positions stay valid throughout.
+    cursor = QTextCursor(document)
+    for start, end, fmt in ranges_to_clear:
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.setCharFormat(fmt)
+
+
+def _fragments(document: QTextDocument) -> list[QTextFragment]:
+    fragments: list[QTextFragment] = []
     block = document.begin()
     while block.isValid():
         it = block.begin()
         while not it.atEnd():
             fragment = it.fragment()
             if fragment.isValid():
-                fmt = fragment.charFormat()
-                if any(fmt.hasProperty(prop) for prop in _STRIPPED_CHAR_PROPERTIES):
-                    for prop in _STRIPPED_CHAR_PROPERTIES:
-                        fmt.clearProperty(prop)
-                    ranges_to_clear.append(
-                        (fragment.position(), fragment.position() + fragment.length(), fmt)
-                    )
+                fragments.append(fragment)
             it += 1
         block = block.next()
+    return fragments
 
+
+def _remove_images(document: QTextDocument) -> None:
+    image_ranges = [
+        (fragment.position(), fragment.length())
+        for fragment in _fragments(document)
+        if fragment.charFormat().isImageFormat()
+    ]
     cursor = QTextCursor(document)
-    for start, end, fmt in ranges_to_clear:
+    # Back to front, so removing one never shifts the ones still to come.
+    for start, length in reversed(image_ranges):
         cursor.setPosition(start)
-        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-        cursor.setCharFormat(fmt)
+        cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+
+
+def _tables(frame: QTextFrame) -> Iterator[QTextTable]:
+    for child in frame.childFrames():
+        if isinstance(child, QTextTable):
+            yield child
+        yield from _tables(child)
+
+
+def _flatten_tables(document: QTextDocument) -> None:
+    """Replaces every table - nested ones first - by one paragraph per
+    non-empty cell (row by row), keeping the cells' text and formatting."""
+    while tables := list(_tables(document.rootFrame())):
+        table = max(tables, key=lambda candidate: candidate.firstPosition())
+        cell_contents: list[QTextDocumentFragment] = []
+        for row in range(table.rows()):
+            for column in range(table.columns()):
+                cell = table.cellAt(row, column)
+                cell_cursor = cell.firstCursorPosition()
+                cell_cursor.setPosition(
+                    cell.lastPosition(), QTextCursor.MoveMode.KeepAnchor
+                )
+                if cell_cursor.selectedText().strip():
+                    cell_contents.append(cell_cursor.selection())
+
+        cursor = QTextCursor(document)
+        # The table's frame starts one position before its first cell and
+        # ends one after its last - that whole range is the table.
+        cursor.setPosition(table.firstPosition() - 1)
+        cursor.setPosition(table.lastPosition() + 1, QTextCursor.MoveMode.KeepAnchor)
+        cursor.beginEditBlock()
+        cursor.removeSelectedText()
+        # Removing the frame joins the paragraphs around it - separate them
+        # again from the flattened cells.
+        if not cursor.atBlockStart():
+            cursor.insertBlock()
+        for index, content in enumerate(cell_contents):
+            if index:
+                cursor.insertBlock()
+            cursor.insertFragment(content)
+        if not cursor.atBlockEnd():
+            cursor.insertBlock()
+        cursor.endEditBlock()
 
 
 class _GrowingTextEdit(GrowingTextEdit):

@@ -51,7 +51,11 @@ oder eine Tabelle mit Spalten hinzukommt.
   Einfügen (insertFromMimeData überschreiben) und zusätzlich vor dem Speichern werden
   Vordergrundfarbe, Hintergrundfarbe, Schriftart und Schriftgröße aus jedem
   Zeichenformat entfernt (zwei unabhängige Stellen, nicht nur eine); erhalten bleiben
-  nur fett, kursiv, unterstrichen und die Überschriftsebene. Überschriften bekommen
+  nur fett, kursiv, unterstrichen, die Überschriftsebene und Listen. An denselben zwei
+  Stellen werden Bilder entfernt (aus Word eingefügte Bilder sind nur Verweise auf
+  Temp-Dateien auf dem Laptop - Gesundheitsdaten außerhalb der verschlüsselten
+  Datenbank), Links zu normalem Text und Tabellen zu einem Absatz je Zelle
+  (`strip_disallowed_formatting` in `ui/report_dialog.py`). Überschriften bekommen
   ihre Größe über eine relative Größenanpassung der Überschriftsebene, nie über eine
   gespeicherte Punktgröße - sonst würde das Entfernen der Schriftgröße auch die
   Überschrift wieder einebnen. Leerer Inhalt (auch ein rein aus Leerzeichen

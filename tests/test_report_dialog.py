@@ -1,7 +1,11 @@
+from PySide6.QtCore import QMimeData
 from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QApplication
 
-from klientenverwaltung.ui.report_dialog import strip_disallowed_formatting
+from klientenverwaltung.ui.report_dialog import (
+    _GrowingTextEdit,
+    strip_disallowed_formatting,
+)
 
 
 def _document_with_html(html: str) -> QTextDocument:
@@ -121,3 +125,71 @@ def test_strip_disallowed_formatting_survives_multiple_runs_in_one_paragraph(
         )
     assert "font-weight:700" in html or "font-weight:600" in html
     assert "font-style:italic" in html
+
+
+def test_strip_disallowed_formatting_removes_images_and_their_local_file_paths(
+    qapp: QApplication,
+) -> None:
+    """Word puts pasted pictures on the clipboard as references to its temp
+    folder on the laptop - stored in a report, that would keep health
+    related images outside the encrypted database (and break later)."""
+    document = _document_with_html(
+        '<p>vor<img src="file:///C:/Users/X/AppData/Local/Temp/msohtmlclip1/01/'
+        'clip_image002.png">nach</p>'
+    )
+
+    strip_disallowed_formatting(document)
+
+    html = document.toHtml()
+    assert "<img" not in html
+    assert "file:///" not in html
+    assert document.toPlainText() == "vornach"
+
+
+def test_strip_disallowed_formatting_turns_links_into_plain_text(
+    qapp: QApplication,
+) -> None:
+    document = _document_with_html('<p><a href="https://example.org">Link</a> Text</p>')
+
+    strip_disallowed_formatting(document)
+
+    html = document.toHtml()
+    assert "example.org" not in html
+    assert "underline" not in html
+    assert document.toPlainText() == "Link Text"
+
+
+def test_strip_disallowed_formatting_flattens_tables_into_paragraphs(
+    qapp: QApplication,
+) -> None:
+    document = _document_with_html(
+        "<p>vorher</p><table><tr><td><b>A</b> eins</td><td>B</td></tr>"
+        "<tr><td>C</td><td></td></tr></table><p>nachher</p>"
+    )
+
+    strip_disallowed_formatting(document)
+
+    assert "<table" not in document.toHtml()
+    assert document.toPlainText() == "vorher\nA eins\nB\nC\nnachher"
+    assert "font-weight:700" in document.toHtml()
+
+
+def test_pasting_word_html_keeps_only_text_and_the_allowed_formatting(
+    qapp: QApplication,
+) -> None:
+    editor = _GrowingTextEdit()
+    source = QMimeData()
+    source.setHtml(
+        '<p style="color:red;font-family:Calibri">Befund <b>fett</b></p>'
+        '<img src="file:///C:/Users/X/AppData/Local/Temp/clip.png">'
+        "<table border=1><tr><td>Zelle</td></tr></table>"
+        '<a href="https://example.org">Link</a>'
+    )
+
+    editor.insertFromMimeData(source)
+
+    html = editor.toHtml()
+    for leftover in ("<img", "file:///", "<table", "example.org", "Calibri"):
+        assert leftover not in html
+    assert "font-weight:700" in html
+    assert "Zelle" in editor.toPlainText()
