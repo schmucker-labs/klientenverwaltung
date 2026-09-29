@@ -47,6 +47,15 @@ class MultipleDataDrivesFoundError(StorageError):
         self.candidate_paths = candidate_paths
 
 
+class DifferentDataDriveError(StorageError):
+    """Exactly one data drive was found, but not the one this laptop
+    recorded - e.g. a second, separately set-up data drive."""
+
+    def __init__(self, message: str, drive_root: Path) -> None:
+        super().__init__(message)
+        self.drive_root = drive_root
+
+
 class IncorrectPasswordError(StorageError):
     """The given password does not decrypt the database."""
 
@@ -140,37 +149,54 @@ def _call_for_each_within[T](
         return dict(results)
 
 
-def _roots_with_identifier(
+def _identifiers_of(
     roots: Sequence[Path],
     *,
     reader: Callable[[Path], str | None],
     timeout: float,
-) -> list[Path]:
-    """The roots (in their given order) whose identifier file could be read in time."""
+) -> dict[Path, str]:
+    """root -> identifier for every root whose identifier file could be read
+    in time, in the roots' given order."""
     contents = _call_for_each_within(reader, roots, timeout)
-    return [root for root in roots if contents.get(root) is not None]
+    return {
+        root: identifier
+        for root in roots
+        if (identifier := contents.get(root)) is not None
+    }
 
 
 def _find_data_drive_among(
     candidate_roots: Sequence[Path],
     *,
     last_known_path: Path | None,
+    expected_id: str | None = None,
     reader: Callable[[Path], str | None] = _read_identifier_file,
     timeout: float = DRIVE_CHECK_TIMEOUT_SECONDS,
 ) -> Path:
     """Core, dependency-injected drive search: checks last_known_path first, then all candidates.
+
+    expected_id is the identifier of the data drive this laptop worked
+    with so far (None if none was recorded yet). A drive carrying it wins
+    over other data drives; a single drive carrying a different one raises
+    DifferentDataDriveError so the user decides. (A 1:1 clone of the drive
+    carries the same identifier - two of those remain "multiple drives".)
 
     Kept separate from find_data_drive() so tests can exercise it against
     temporary directories standing in for drives, and inject a slow reader to
     verify that an unresponsive drive is skipped rather than blocking the
     whole search.
     """
-    if last_known_path is not None and _roots_with_identifier(
-        [last_known_path], reader=reader, timeout=timeout
-    ):
-        return last_known_path
+    if last_known_path is not None:
+        last_known = _identifiers_of([last_known_path], reader=reader, timeout=timeout)
+        if last_known and expected_id in (None, last_known[last_known_path]):
+            return last_known_path
 
-    candidates = _roots_with_identifier(candidate_roots, reader=reader, timeout=timeout)
+    found = _identifiers_of(candidate_roots, reader=reader, timeout=timeout)
+    if expected_id is not None:
+        matching = [root for root, identifier in found.items() if identifier == expected_id]
+        if len(matching) == 1:
+            return matching[0]
+    candidates = list(found)
 
     if not candidates:
         raise DataDriveNotFoundError(
@@ -184,16 +210,45 @@ def _find_data_drive_among(
             "Bitte nur die richtige Datenplatte anschließen.",
             candidates,
         )
+    if expected_id is not None:
+        raise DifferentDataDriveError(
+            f"Auf dem Laufwerk {candidates[0]} wurde eine andere Datenplatte gefunden "
+            "als die, mit der auf diesem Computer bisher gearbeitet wurde. Nur "
+            "fortfahren, wenn Sie bewusst mit dieser Platte weiterarbeiten wollen.",
+            candidates[0],
+        )
     return candidates[0]
+
+
+def _drive_roots() -> list[Path]:
+    return [Path(f"{letter}:\\") for letter in _assigned_drive_letters()]
 
 
 def find_data_drive() -> Path:
     """Finds the real data drive among currently assigned Windows drive letters."""
-    last_known = config.get_last_known_drive_path()
-    candidate_roots = [Path(f"{letter}:\\") for letter in _assigned_drive_letters()]
-    found = _find_data_drive_among(candidate_roots, last_known_path=last_known)
-    config.set_last_known_drive_path(found)
+    found = _find_data_drive_among(
+        _drive_roots(),
+        last_known_path=config.get_last_known_drive_path(),
+        expected_id=config.get_data_drive_id(),
+    )
+    _remember_data_drive(found)
     return found
+
+
+def accept_data_drive(drive_root: Path) -> None:
+    """Records drive_root as this laptop's data drive from now on - after
+    the user confirmed working with a different one."""
+    _remember_data_drive(drive_root)
+
+
+def _remember_data_drive(drive_root: Path) -> None:
+    identifier = _read_identifier_file(drive_root)
+    try:
+        config.set_last_known_drive_path(drive_root)
+        if identifier is not None:
+            config.set_data_drive_id(identifier)
+    except OSError:
+        pass  # only a search shortcut / safety check for the next start
 
 
 def _bundle_root() -> Path:
@@ -301,16 +356,14 @@ def set_up_data_drive(drive_root: Path, password: str) -> Engine:
             ) from exc
         raise
 
-    try:
-        config.set_last_known_drive_path(drive_root)
-    except OSError:
-        pass  # only a search shortcut for the next start, not essential
+    # A newly set-up drive is deliberately this laptop's data drive now.
+    _remember_data_drive(drive_root)
     return engine
 
 
 def list_available_drives() -> list[Path]:
     """Currently assigned Windows drive letters, as candidate roots to set up."""
-    return [Path(f"{letter}:\\") for letter in _assigned_drive_letters()]
+    return _drive_roots()
 
 
 _DRIVE_TYPE_FALLBACK_NAMES = {

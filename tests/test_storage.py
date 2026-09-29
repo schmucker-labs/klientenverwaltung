@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from klientenverwaltung import storage
+from klientenverwaltung import config, storage
 
 
 @pytest.fixture(autouse=True)
@@ -521,3 +521,57 @@ class TestCreateEncryptedEngineThreading:
             assert result == 1
         finally:
             engine.dispose()
+
+
+def _identifier_of(drive: Path) -> str:
+    return (drive / storage.IDENTIFIER_FILENAME).read_text(encoding="utf-8").strip()
+
+
+class TestRecordedDataDriveIdentity:
+    def test_a_different_data_drive_than_the_recorded_one_is_reported(
+        self, tmp_path: Path
+    ) -> None:
+        other_drive = _make_drive_with_identifier(tmp_path / "other")
+
+        with pytest.raises(storage.DifferentDataDriveError) as exc_info:
+            storage._find_data_drive_among(
+                [other_drive], last_known_path=None, expected_id=str(uuid.uuid4())
+            )
+
+        assert exc_info.value.drive_root == other_drive
+
+    def test_the_recorded_drive_wins_over_another_data_drive(self, tmp_path: Path) -> None:
+        own_drive = _make_drive_with_identifier(tmp_path / "own")
+        other_drive = _make_drive_with_identifier(tmp_path / "other")
+
+        found = storage._find_data_drive_among(
+            [other_drive, own_drive],
+            last_known_path=other_drive,
+            expected_id=_identifier_of(own_drive),
+        )
+
+        assert found == own_drive
+
+    def test_find_data_drive_records_the_identity_it_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        drive = _make_drive_with_identifier(tmp_path / "drive")
+        monkeypatch.setattr(storage, "_drive_roots", lambda: [drive])
+
+        assert storage.find_data_drive() == drive
+        assert config.get_data_drive_id() == _identifier_of(drive)
+
+    def test_setting_up_a_drive_records_its_identity(self, tmp_path: Path) -> None:
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort").dispose()
+
+        assert config.get_data_drive_id() == _identifier_of(drive)
+
+    def test_accepting_another_drive_records_it(self, tmp_path: Path) -> None:
+        other_drive = _make_drive_with_identifier(tmp_path / "other")
+        config.set_data_drive_id(str(uuid.uuid4()))
+
+        storage.accept_data_drive(other_drive)
+
+        assert config.get_data_drive_id() == _identifier_of(other_drive)

@@ -83,6 +83,30 @@ def ask_retry_or_setup(
     return "cancel"
 
 
+def ask_use_other_data_drive(
+    message: str, *, parent: QWidget | None = None
+) -> Literal["use", "retry", "cancel"]:
+    """A data drive other than the recorded one was found; defaults to
+    "Erneut versuchen" (e.g. after plugging in the usual drive)."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Andere Datenplatte gefunden")
+    box.setText(message)
+    use_button = box.addButton(
+        "Diese Platte verwenden", QMessageBox.ButtonRole.AcceptRole
+    )
+    retry_button = box.addButton("Erneut versuchen", QMessageBox.ButtonRole.ActionRole)
+    box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(retry_button)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is use_button:
+        return "use"
+    if clicked is retry_button:
+        return "retry"
+    return "cancel"
+
+
 def ask_save_discard_cancel(
     message: str,
     *,

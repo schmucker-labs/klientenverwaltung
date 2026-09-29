@@ -20,7 +20,12 @@ from klientenverwaltung.services import (
     DataUnavailableError,
     ServiceError,
 )
-from klientenverwaltung.ui.dialogs import ask_retry, ask_retry_or_setup, show_error
+from klientenverwaltung.ui.dialogs import (
+    ask_retry,
+    ask_retry_or_setup,
+    ask_use_other_data_drive,
+    show_error,
+)
 from klientenverwaltung.ui.icons import get_app_icon, load_pixmap
 from klientenverwaltung.ui.main_window import MainWindow
 from klientenverwaltung.ui.password_dialog import ask_for_password
@@ -70,6 +75,19 @@ def _acquire_drive_and_engine() -> tuple[Path, Engine] | None:
         except storage.MultipleDataDrivesFoundError as exc:
             if not ask_retry(str(exc), title="Mehrere Datenplatten gefunden"):
                 return None
+            continue
+        except storage.DifferentDataDriveError as exc:
+            decision = ask_use_other_data_drive(str(exc))
+            if decision == "cancel":
+                return None
+            if decision == "retry":
+                continue
+            storage.accept_data_drive(exc.drive_root)
+            drive_root = exc.drive_root
+            if storage.drive_setup_state(drive_root) is not (
+                storage.DriveSetupState.INCOMPLETE
+            ):
+                break
             continue
         else:
             if storage.drive_setup_state(drive_root) is not (
