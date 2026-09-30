@@ -10,7 +10,7 @@ instant, and it keeps repositories free of database-specific behavior.
 import unicodedata
 
 
-def _fold(text: str) -> str:
+def fold(text: str) -> str:
     """Case- and accent-insensitive form: "Özdemir" -> "ozdemir",
     "Straße" -> "strasse"."""
     decomposed = unicodedata.normalize("NFKD", text.casefold())
@@ -19,7 +19,7 @@ def _fold(text: str) -> str:
 
 def search_terms(search: str | None) -> list[str]:
     """The folded, whitespace-separated terms of a search text ([] = no filter)."""
-    return _fold(search).split() if search else []
+    return fold(search).split() if search else []
 
 
 def matches(terms: list[str], *values: str | None) -> bool:
@@ -29,5 +29,5 @@ def matches(terms: list[str], *values: str | None) -> bool:
     in either order, while "Anna Özdemir" finds neither of two different
     clients named Anna and Özdemir.
     """
-    folded = [_fold(value) for value in values if value]
+    folded = [fold(value) for value in values if value]
     return all(any(term in value for value in folded) for term in terms)

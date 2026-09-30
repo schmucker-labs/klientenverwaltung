@@ -7,7 +7,15 @@ class DataUnavailableError(ServiceError):
 
 
 class ValidationError(ServiceError):
-    """Input data violates a business rule."""
+    """Input data violates a business rule.
+
+    field is the service method's parameter name of the (first) offending
+    input, where there is one - so a form can put the cursor there.
+    """
+
+    def __init__(self, message: str, *, field: str | None = None) -> None:
+        super().__init__(message)
+        self.field = field
 
 
 class NotFoundError(ServiceError):
@@ -16,6 +24,13 @@ class NotFoundError(ServiceError):
 
 class ConflictError(ServiceError):
     """The operation would violate a uniqueness or usage rule."""
+
+
+class DuplicateClientError(ConflictError):
+    """A client with the same name (and no differing birth date) already
+    exists. A warning rather than a ban - two people may share a name: the
+    message lists the existing clients, and the caller may repeat the call
+    with allow_duplicate=True once the user has confirmed."""
 
 
 class SessionOverlapError(ConflictError):

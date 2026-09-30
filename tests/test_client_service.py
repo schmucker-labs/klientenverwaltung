@@ -1,10 +1,12 @@
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy.orm import Session, sessionmaker
 
 from klientenverwaltung.models import Client, TreatmentSession, TreatmentType
 from klientenverwaltung.services import (
     ClientService,
+    DuplicateClientError,
     NotFoundError,
     TreatmentSessionService,
     ValidationError,
@@ -404,3 +406,186 @@ def test_dates_in_the_future_are_rejected(
         client_service.update_client(
             client.id, first_name="Anna", last_name="Muster", **{field: tomorrow}
         )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("street", "Am Hang 3/2"),
+        ("street", "C 4, 12"),
+        ("street", "Hauptstr. 5-7"),
+        ("postal_code", "01067"),
+        ("postal_code", "1030"),
+        ("city", "Frankfurt (Oder)"),
+        ("city", "St. Gallen"),
+        ("city", "Villingen-Schwenningen"),
+        ("phone", "0171 1234567"),
+        ("email", "anna.muster@web.de"),
+        ("email", "a_b+c@müller-praxis.co.at"),
+    ],
+)
+def test_plausible_contact_fields_are_accepted(
+    client_service: ClientService, field: str, value: str
+) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", **{field: value}
+    )
+    assert getattr(client, field) == value
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("street", "Hauptstraße"),
+        ("street", "12345"),
+        ("street", "Haupt@straße 1"),
+        ("postal_code", "123"),
+        ("postal_code", "123456"),
+        ("postal_code", "D-80331"),
+        ("city", "Wien 3"),
+        ("city", "X"),
+        ("phone", "12345"),
+        ("phone", "0171 1234567 abends"),
+        ("phone", "0171+1234567"),
+        ("email", "test"),
+        ("email", "anna@web"),
+        ("email", "anna muster@web.de"),
+        ("email", "anna@@web.de"),
+        ("email", "anna..muster@web.de"),
+    ],
+)
+def test_implausible_contact_fields_are_rejected(
+    client_service: ClientService, client: Client, field: str, value: str
+) -> None:
+    with pytest.raises(ValidationError) as create_error:
+        client_service.create_client(
+            first_name="Anna", last_name="Muster", **{field: value}
+        )
+    assert create_error.value.field == field
+
+    with pytest.raises(ValidationError):
+        client_service.update_client(
+            client.id, first_name="Anna", last_name="Muster", **{field: value}
+        )
+
+
+def test_phone_is_stored_and_shown_in_the_standard_spelling(
+    client_service: ClientService, session_factory: sessionmaker[Session]
+) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", phone="+49 (0) 171 1234567"
+    )
+    assert client.phone == "0171 1234567"
+
+    # A number stored before the rules existed is shown in the standard
+    # spelling as well - in the form and in the client list.
+    with session_factory() as session:
+        session.get(Client, client.id).phone = "089/123456-78"
+        session.commit()
+    assert client_service.get_client(client.id).phone == "089 123456-78"
+    [entry] = client_service.list_clients_with_last_session()
+    assert entry.phone == "089 123456-78"
+
+
+def test_email_is_stored_in_lower_case(client_service: ClientService) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", email="Anna.Muster@Web.DE"
+    )
+    assert client.email == "anna.muster@web.de"
+
+    too_long = "a" * 65 + "@web.de"
+    with pytest.raises(ValidationError, match="E-Mail"):
+        client_service.update_client(
+            client.id, first_name="Anna", last_name="Muster", email=too_long
+        )
+
+
+def test_a_client_with_an_existing_name_is_only_saved_once_confirmed(
+    client_service: ClientService,
+) -> None:
+    client_service.create_client(
+        first_name="Anna", last_name="Müller", city="Musterstadt"
+    )
+    client_service.archive_client(
+        client_service.create_client(
+            first_name="Anna",
+            last_name="Müller",
+            birth_date=date(1980, 3, 12),
+            allow_duplicate=True,
+        ).id
+    )
+
+    # Case and accents aside; the message names every client it may be.
+    with pytest.raises(DuplicateClientError) as error:
+        client_service.create_client(first_name="anna", last_name="muller")
+    assert "2 Klienten" in str(error.value)
+    assert "• Anna Müller, Musterstadt" in str(error.value)
+    assert "• Anna Müller, geboren am 12.03.1980 (archiviert)" in str(error.value)
+    assert len(client_service.list_clients(include_archived=True)) == 2
+
+    # Invalid input is reported first - the question comes last.
+    with pytest.raises(ValidationError):
+        client_service.create_client(
+            first_name="Anna", last_name="Müller", postal_code="abc"
+        )
+
+    confirmed = client_service.create_client(
+        first_name="Anna", last_name="Müller", allow_duplicate=True
+    )
+    assert confirmed.id is not None
+
+
+def test_a_different_birth_date_is_a_different_person(
+    client_service: ClientService,
+) -> None:
+    client_service.create_client(
+        first_name="Anna", last_name="Muster", birth_date=date(1980, 3, 12)
+    )
+
+    client_service.create_client(
+        first_name="Anna", last_name="Muster", birth_date=date(1975, 1, 1)
+    )
+
+    with pytest.raises(DuplicateClientError, match="einen Klienten"):
+        client_service.create_client(
+            first_name="Anna", last_name="Muster", birth_date=date(1980, 3, 12)
+        )
+
+
+def test_updating_asks_only_when_the_name_changes_to_an_existing_one(
+    client_service: ClientService,
+) -> None:
+    anna = client_service.create_client(first_name="Anna", last_name="Muster")
+    namesake = client_service.create_client(
+        first_name="Anna", last_name="Muster", allow_duplicate=True
+    )
+    berta = client_service.create_client(first_name="Berta", last_name="Beispiel")
+
+    # A confirmed namesake saves without being asked again.
+    client_service.update_client(
+        namesake.id, first_name="Anna", last_name="Muster", city="Musterstadt"
+    )
+
+    with pytest.raises(DuplicateClientError, match="2 Klienten"):
+        client_service.update_client(berta.id, first_name="Anna", last_name="Muster")
+    renamed = client_service.update_client(
+        berta.id, first_name="Anna", last_name="Muster", allow_duplicate=True
+    )
+    assert (renamed.first_name, renamed.last_name) == (anna.first_name, anna.last_name)
+
+
+def test_contact_fields_are_trimmed_and_all_problems_reported_at_once(
+    client_service: ClientService,
+) -> None:
+    client = client_service.create_client(
+        first_name="Anna", last_name="Muster", postal_code=" 80331 ", phone="   "
+    )
+    assert client.postal_code == "80331"
+    assert client.phone is None
+
+    with pytest.raises(ValidationError) as error:
+        client_service.create_client(
+            first_name="Anna", last_name="Muster", postal_code="abc", email="test"
+        )
+    assert "PLZ" in str(error.value) and "E-Mail" in str(error.value)
+    assert error.value.field == "postal_code"

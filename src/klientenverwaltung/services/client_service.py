@@ -8,8 +8,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from klientenverwaltung.models import Client
 from klientenverwaltung.repositories import ClientRepository, TreatmentSessionRepository
-from klientenverwaltung.services.errors import NotFoundError, ValidationError
-from klientenverwaltung.services.search import matches, search_terms
+from klientenverwaltung.services.errors import (
+    DuplicateClientError,
+    NotFoundError,
+    ValidationError,
+)
+from klientenverwaltung.services.phone import (
+    PhoneNumberError,
+    format_phone,
+    normalize_phone,
+)
+from klientenverwaltung.services.search import fold, matches, search_terms
 from klientenverwaltung.services.transaction import database_errors_as, transaction
 
 _LOAD_ERROR = "Die Klientendaten konnten nicht geladen werden."
@@ -42,6 +51,130 @@ def _normalize_word(word: str, *, is_first: bool) -> str:
         part if part in ("-", "'") else part.capitalize()
         for part in _WORD_PART_SPLIT_RE.split(word)
     )
+
+
+_LETTER = r"[^\W\d_]"  # any letter, umlauts and accents included
+_LETTER_OR_DIGIT = r"[^\W_]"
+_EMAIL_LOCAL_CHARS = r"[\w!#$%&'*+/=?^`{|}~-]+"
+
+# The optional contact fields, keyed by the service methods' parameter name:
+# what a filled-in value must look like, and the message shown otherwise.
+# Deliberately lenient - these catch slips of the keyboard (letters in a PLZ,
+# a missing "@"), they cannot tell whether an address really exists.
+_CONTACT_RULES: dict[str, tuple[re.Pattern[str], str]] = {
+    # Street and house number: "Hauptstraße 12a", "Am Hang 3/2", "C 4, 12".
+    "street": (
+        re.compile(
+            rf"(?=.*{_LETTER})(?=.*[0-9])(?:{_LETTER_OR_DIGIT}|[ .,'’/()-])+",
+        ),
+        "Straße: Bitte Straße und Hausnummer eingeben, zum Beispiel Hauptstraße 12a.",
+    ),
+    # No country field, so both lengths are fine anywhere: 5 digits for
+    # Germany, 4 for Austria and Switzerland.
+    "postal_code": (
+        re.compile(r"[0-9]{4,5}"),
+        (
+            "PLZ: Bitte 5 Ziffern eingeben (Österreich und Schweiz: 4), "
+            "zum Beispiel 80331."
+        ),
+    ),
+    # "Frankfurt (Oder)", "St. Gallen", "Villingen-Schwenningen".
+    "city": (
+        re.compile(rf"{_LETTER}(?:{_LETTER}|[ .'’/()-])+"),
+        "Ort: Bitte nur den Ortsnamen ohne Ziffern eingeben, zum Beispiel Bad Tölz.",
+    ),
+    # "phone" has no entry here: services/phone.py knows the German numbering
+    # rules and also rewrites the number in the standard spelling.
+    # One "@", no empty part between dots, a domain ending in letters; at
+    # most 64 characters before the "@" and 254 in all (the limits mail
+    # servers accept). Stored in lower case, see _validate_contact_fields.
+    "email": (
+        re.compile(
+            rf"(?=.{{1,254}}\Z)(?=[^@]{{1,64}}@)"
+            rf"{_EMAIL_LOCAL_CHARS}(?:\.{_EMAIL_LOCAL_CHARS})*"
+            rf"@(?:{_LETTER_OR_DIGIT}+(?:-+{_LETTER_OR_DIGIT}+)*\.)+{_LETTER}{{2,}}"
+        ),
+        (
+            "E-Mail: Bitte eine vollständige Adresse eingeben, "
+            "zum Beispiel name@beispiel.de."
+        ),
+    ),
+}
+
+
+def _validate_contact_fields(**fields: str | None) -> dict[str, str | None]:
+    """The given contact fields with surrounding/repeated whitespace removed
+    (empty becomes None), the telephone number in its standard spelling and
+    the e-mail address in lower case - or one ValidationError listing every
+    field that does not match its rule (_CONTACT_RULES; for the telephone
+    number services/phone.py), in the order the fields were passed."""
+    cleaned = {
+        name: " ".join((value or "").split()) or None for name, value in fields.items()
+    }
+    problems: list[tuple[str, str]] = []
+    for name, value in cleaned.items():
+        if value is None:
+            continue
+        if name == "phone":
+            try:
+                cleaned[name] = normalize_phone(value)
+            except PhoneNumberError as exc:
+                problems.append((name, f"Telefon: {exc}"))
+            continue
+        pattern, message = _CONTACT_RULES[name]
+        if not pattern.fullmatch(value):
+            problems.append((name, message))
+        elif name == "email":
+            # Mail providers do not tell "Anna@Web.de" from "anna@web.de".
+            cleaned[name] = value.lower()
+    if problems:
+        raise ValidationError(
+            "\n\n".join(message for _, message in problems), field=problems[0][0]
+        )
+    return cleaned
+
+
+def _possible_duplicates(
+    clients: list[Client],
+    *,
+    first_name: str,
+    last_name: str,
+    birth_date: date | None,
+    exclude_id: int | None = None,
+) -> list[Client]:
+    """The clients that may be the same person: the same first and last
+    name (case and accents aside, like the search), unless both have a
+    birth date and the two differ."""
+    name = (fold(first_name), fold(last_name))
+    return [
+        client
+        for client in clients
+        if client.id != exclude_id
+        and (fold(client.first_name), fold(client.last_name)) == name
+        and (
+            birth_date is None
+            or client.birth_date is None
+            or client.birth_date == birth_date
+        )
+    ]
+
+
+def _duplicate_error(duplicates: list[Client]) -> DuplicateClientError:
+    def describe(client: Client) -> str:
+        parts = [f"{client.first_name} {client.last_name}"]
+        if client.birth_date is not None:
+            parts.append(f"geboren am {client.birth_date.strftime('%d.%m.%Y')}")
+        if client.city:
+            parts.append(client.city)
+        return ", ".join(parts) + (" (archiviert)" if client.archived else "")
+
+    intro = (
+        "Es gibt bereits einen Klienten mit diesem Namen:"
+        if len(duplicates) == 1
+        else f"Es gibt bereits {len(duplicates)} Klienten mit diesem Namen:"
+    )
+    listed = "\n".join(f"• {describe(client)}" for client in duplicates)
+    return DuplicateClientError(f"{intro}\n\n{listed}")
 
 
 def _filter_by_search(clients: list[Client], search: str | None) -> list[Client]:
@@ -115,8 +248,9 @@ def _client_details(client: Client) -> ClientDetails:
         street=client.street,
         postal_code=client.postal_code,
         city=client.city,
-        phone=client.phone,
-        email=client.email,
+        # Also for entries stored before the standard spelling existed.
+        phone=format_phone(client.phone),
+        email=client.email.lower() if client.email else client.email,
         concern=client.concern,
         referral_source=client.referral_source,
         consent_date=client.consent_date,
@@ -162,30 +296,45 @@ class ClientService:
         referral_source: str | None = None,
         consent_date: date | None = None,
         notes: str | None = None,
+        allow_duplicate: bool = False,
     ) -> ClientDetails:
+        """Raises DuplicateClientError - after every other check passed - if
+        the person may already exist (see _possible_duplicates), unless
+        allow_duplicate is set: the user confirmed it is someone else."""
         first_name, last_name = self._validate_name(first_name, last_name)
         self._validate_dates(birth_date=birth_date, consent_date=consent_date)
+        contact = _validate_contact_fields(
+            street=street, postal_code=postal_code, city=city, phone=phone, email=email
+        )
         salutation = self._normalize_optional(salutation)
-        street = self._normalize_optional(street)
-        city = self._normalize_optional(city)
         client = Client(
             first_name=first_name,
             last_name=last_name,
             salutation=salutation,
             birth_date=birth_date,
-            street=street,
-            postal_code=postal_code,
-            city=city,
-            phone=phone,
-            email=email,
+            street=self._normalize_optional(contact["street"]),
+            postal_code=contact["postal_code"],
+            city=self._normalize_optional(contact["city"]),
+            phone=contact["phone"],
+            email=contact["email"],
             concern=concern,
             referral_source=referral_source,
             consent_date=consent_date,
             notes=notes,
         )
         with self._session_factory() as session:
+            repo = ClientRepository(session)
+            if not allow_duplicate:
+                duplicates = _possible_duplicates(
+                    repo.list(include_archived=True),
+                    first_name=first_name,
+                    last_name=last_name,
+                    birth_date=birth_date,
+                )
+                if duplicates:
+                    raise _duplicate_error(duplicates)
             with transaction(session, "Klient konnte nicht gespeichert werden."):
-                ClientRepository(session).add(client)
+                repo.add(client)
             return _client_details(client)
 
     @database_errors_as(_LOAD_ERROR)
@@ -226,7 +375,7 @@ class ClientService:
                     first_name=client.first_name,
                     last_name=client.last_name,
                     city=client.city,
-                    phone=client.phone,
+                    phone=format_phone(client.phone),
                     archived=client.archived,
                     last_session_date=last_session_dates.get(client.id),
                     upcoming_appointments=[
@@ -259,25 +408,46 @@ class ClientService:
         referral_source: str | None = None,
         consent_date: date | None = None,
         notes: str | None = None,
+        allow_duplicate: bool = False,
     ) -> ClientDetails:
+        """Raises DuplicateClientError like create_client - but only when
+        the name or the birth date is being changed, so a namesake that was
+        confirmed once does not ask again on every save."""
         first_name, last_name = self._validate_name(first_name, last_name)
         self._validate_dates(birth_date=birth_date, consent_date=consent_date)
+        contact = _validate_contact_fields(
+            street=street, postal_code=postal_code, city=city, phone=phone, email=email
+        )
         salutation = self._normalize_optional(salutation)
-        street = self._normalize_optional(street)
-        city = self._normalize_optional(city)
         with self._session_factory() as session:
-            client = ClientRepository(session).get_by_id(client_id)
+            repo = ClientRepository(session)
+            client = repo.get_by_id(client_id)
             if client is None:
                 raise NotFoundError(f"Klient mit ID {client_id} wurde nicht gefunden.")
+            identity_changed = (fold(first_name), fold(last_name), birth_date) != (
+                fold(client.first_name),
+                fold(client.last_name),
+                client.birth_date,
+            )
+            if identity_changed and not allow_duplicate:
+                duplicates = _possible_duplicates(
+                    repo.list(include_archived=True),
+                    first_name=first_name,
+                    last_name=last_name,
+                    birth_date=birth_date,
+                    exclude_id=client_id,
+                )
+                if duplicates:
+                    raise _duplicate_error(duplicates)
             client.first_name = first_name
             client.last_name = last_name
             client.salutation = salutation
             client.birth_date = birth_date
-            client.street = street
-            client.postal_code = postal_code
-            client.city = city
-            client.phone = phone
-            client.email = email
+            client.street = self._normalize_optional(contact["street"])
+            client.postal_code = contact["postal_code"]
+            client.city = self._normalize_optional(contact["city"])
+            client.phone = contact["phone"]
+            client.email = contact["email"]
             client.concern = concern
             client.referral_source = referral_source
             client.consent_date = consent_date
@@ -318,7 +488,10 @@ class ClientService:
         first_name = first_name.strip()
         last_name = last_name.strip()
         if not first_name or not last_name:
-            raise ValidationError("Vor- und Nachname sind Pflichtfelder.")
+            raise ValidationError(
+                "Vor- und Nachname sind Pflichtfelder.",
+                field="last_name" if first_name else "first_name",
+            )
         return _normalize_casing(first_name), _normalize_casing(last_name)
 
     @staticmethod
