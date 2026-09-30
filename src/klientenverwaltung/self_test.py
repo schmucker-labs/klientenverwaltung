@@ -71,7 +71,7 @@ class _SelfTest:
         apply_theme_mode(ThemeMode.LIGHT)
         if get_app_icon().isNull():
             raise RuntimeError("app.ico fehlt im Build")
-        for name in ("logo", "splash", "sun", "moon"):
+        for name in ("logo", "splash", "sun", "moon", "plus"):
             if load_pixmap(name).isNull():
                 raise RuntimeError(f"Icon fehlt im Build: {name}.png")
 

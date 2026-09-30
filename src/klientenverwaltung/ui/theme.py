@@ -363,8 +363,13 @@ def build_stylesheet(palette: ColorPalette) -> str:
             color: {p.text};
             border: 1px solid {p.lines};
             border-radius: 5px;
-            padding: 6px 14px;
-            min-height: 30px;
+            /* One size for every button (docs/ui-regeln.md): 32 px
+               tall like the input fields (22 + 2x4 padding + 2x1
+               border), at least 96 px wide (66 + 2x14 + 2x1) so
+               short labels like "OK" do not make stubs. */
+            padding: 4px 14px;
+            min-height: 22px;
+            min-width: 66px;
         }}
         /* The default button (what Enter triggers) is tinted; the focused
            one gets a thicker ring - so both stay tellable apart, also when
@@ -386,14 +391,14 @@ def build_stylesheet(palette: ColorPalette) -> str:
         }}
         QPushButton:focus {{
             border: 2px solid {p.focus};
-            padding: 5px 13px;
+            padding: 3px 13px;
             color: {p.text};
         }}
         QPushButton:disabled {{
             background-color: {p.surface_panel};
             color: {p.text_disabled};
             border: 1px solid {p.lines};
-            padding: 6px 14px;
+            padding: 4px 14px;
         }}
         QPushButton:checked {{
             background-color: {p.accent};
@@ -414,6 +419,16 @@ def build_stylesheet(palette: ColorPalette) -> str:
             background-color: {p.text_disabled};
             color: {p.surface_panel};
             border: 1px solid {p.text_disabled};
+        }}
+        /* Icon-only toolbar buttons next to another control (see
+           docs/ui-regeln.md): without the padding and minimum size of a
+           dialog button - their own size hint makes them a square as
+           tall as that control. After the rules above - equal
+           specificity, so this one wins in every state. */
+        QPushButton[toolbarButton="true"] {{
+            padding: 0;
+            min-height: 0;
+            min-width: 0;
         }}
 
         QCheckBox {{
@@ -520,6 +535,20 @@ def build_stylesheet(palette: ColorPalette) -> str:
             height: 0;
             border: none;
             background: none;
+        }}
+
+        /* A caption that ranks below the heading it belongs to, e.g.
+           "Bericht"/"Impulse" under a session of the Berichtsverlauf. */
+        QLabel[secondary="true"] {{
+            color: {p.text_secondary};
+        }}
+
+        /* A hairline between sections, e.g. the sessions of the
+           Berichtsverlauf - the same color as the borders around it. Its
+           height is set in code. */
+        QFrame[divider="true"] {{
+            background-color: {p.lines};
+            border: none;
         }}
 
         QSplitter::handle {{

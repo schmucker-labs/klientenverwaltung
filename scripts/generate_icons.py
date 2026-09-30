@@ -135,6 +135,11 @@ def main() -> None:
         "moon.png",
         size=QSize(_MONOCHROME_ICON_BASE_SIZE, _MONOCHROME_ICON_BASE_SIZE),
     )
+    _generate_png(
+        "plus",
+        "plus.png",
+        size=QSize(_MONOCHROME_ICON_BASE_SIZE, _MONOCHROME_ICON_BASE_SIZE),
+    )
 
 
 if __name__ == "__main__":
