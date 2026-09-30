@@ -497,6 +497,27 @@ class TestOpenDatabase:
             connection.execute(text("SELECT * FROM client"))
         assert exc_info.value.connection_invalidated is True
 
+    def test_a_vanished_database_file_is_never_recreated_empty(
+        self, tmp_path: Path
+    ) -> None:
+        """If the file is gone while its folder still exists - another drive
+        got the data drive's letter mid-session - SQLite would happily create
+        a brand-new, empty database there on the next connect. An engine
+        for an existing database must report that as lost data instead."""
+        drive = tmp_path / "drive"
+        drive.mkdir()
+        db_path = drive / storage.DB_FILENAME
+        storage.set_up_data_drive(drive, "ein-sehr-sicheres-passwort").dispose()
+        engine = storage.open_database(db_path, "ein-sehr-sicheres-passwort")
+        engine.dispose()
+
+        db_path.unlink()
+
+        with pytest.raises(DBAPIError) as exc_info, engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        assert exc_info.value.connection_invalidated is True
+        assert not db_path.exists()
+
 
 class TestCreateEncryptedEngineThreading:
     def test_connection_works_from_a_different_thread(self, tmp_path: Path) -> None:

@@ -19,7 +19,7 @@ from alembic.script import ScriptDirectory
 from alembic.script.revision import RevisionError
 from alembic.util import CommandError
 from sqlalchemy import URL, Connection, Engine, create_engine, event
-from sqlalchemy.engine import ExceptionContext
+from sqlalchemy.engine import Dialect, ExceptionContext
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 from alembic import command
@@ -289,6 +289,11 @@ def open_database(db_path: Path, password: str) -> Engine:
     German DataUnavailableError), and the pool drops its dead connections -
     once the drive is plugged back in under the same letter, the next
     operation simply works again, no restart needed.
+
+    And it refuses to connect at all while the file is missing: SQLite
+    creates a database file that does not exist, so a reconnect after the
+    drive's letter went to another drive would silently start a new, empty
+    database there instead of failing.
     """
     if not db_path.exists():
         raise StorageError(f"Datenbankdatei wurde nicht gefunden: {db_path}")
@@ -308,6 +313,15 @@ def open_database(db_path: Path, password: str) -> Engine:
     def _report_vanished_drive_as_disconnect(context: ExceptionContext) -> None:
         if not db_path.exists():
             context.is_disconnect = True
+
+    @event.listens_for(engine, "do_connect")
+    def _never_create_a_missing_database(
+        dialect: Dialect, _connection_record: object, _cargs: object, _cparams: object
+    ) -> None:
+        if not db_path.exists():
+            # The driver's own error type, so SQLAlchemy treats it like any
+            # failed connect - and the hook above marks it as a disconnect.
+            raise dialect.dbapi.OperationalError("unable to open database file")
 
     return engine
 
