@@ -1,4 +1,5 @@
 from PySide6.QtCore import QModelIndex, QPoint, Qt, QTimer
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -16,11 +17,13 @@ from klientenverwaltung.services import (
     ClientListEntry,
     ServiceError,
 )
+from klientenverwaltung.ui.buttons import CreateButton, action_row
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_overview_dialog import ClientOverviewDialog
 from klientenverwaltung.ui.client_table_model import COLUMN_TITLES, ClientTableModel
 from klientenverwaltung.ui.dialogs import ask_confirm_delete, show_error
 from klientenverwaltung.ui.media_cleanup import offer_to_delete_now_unused_media
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_header_state,
@@ -71,7 +74,9 @@ class ClientListWidget(QWidget):
         header.sectionResized.connect(self._save_header_state)
         header.sortIndicatorChanged.connect(self._save_header_state)
 
-        self._new_button = QPushButton("Neu", self)
+        self._new_button = CreateButton("Neuer Klient", self)
+        self._new_button.setToolTip("Neuer Klient (Strg+N)")
+        QShortcut(QKeySequence("Ctrl+N"), self, activated=self._on_new_clicked)
         self._edit_button = QPushButton("Bearbeiten", self)
         self._archive_button = QPushButton("Archivieren", self)
         self._delete_button = QPushButton("Löschen", self)
@@ -83,17 +88,19 @@ class ClientListWidget(QWidget):
         search_row.addWidget(self._search_edit)
         search_row.addWidget(self._show_archived_checkbox)
 
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._new_button)
-        button_row.addStretch()
-        button_row.addWidget(self._edit_button)
-        button_row.addWidget(self._archive_button)
-        button_row.addWidget(self._delete_button)
+        button_row = action_row(
+            independent=[self._new_button],
+            on_selection=[
+                self._edit_button,
+                self._archive_button,
+                self._delete_button,
+            ],
+        )
 
         layout = QVBoxLayout(self)
         layout.addLayout(search_row)
         layout.addWidget(self._table_view)
-        layout.addLayout(button_row)
+        layout.addWidget(button_row)
 
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -150,6 +157,11 @@ class ClientListWidget(QWidget):
         else:
             self._archive_button.setText("Archivieren")
 
+    def refresh(self) -> None:
+        """For the main window: something the list shows was changed in a
+        window opened from the menu (e.g. a treatment type was renamed)."""
+        self._reload()
+
     def _reload(self, select_client_id: int | None = None) -> None:
         """Reloads the list, keeping the selected client selected (or
         selecting select_client_id, e.g. a client just created)."""
@@ -167,11 +179,10 @@ class ClientListWidget(QWidget):
         self._update_button_states()
 
     def _select_client(self, client_id: int) -> None:
-        for row in range(self._table_model.rowCount()):
-            if self._table_model.entry_at(row).id == client_id:
-                self._table_view.selectRow(row)
-                self._table_view.scrollTo(self._table_model.index(row, 0))
-                return
+        select_rows_where(
+            self._table_view,
+            lambda row: self._table_model.entry_at(row).id == client_id,
+        )
 
     def _open_detail_dialog(self, client_id: int | None) -> None:
         dialog = ClientDetailDialog(
@@ -179,8 +190,13 @@ class ClientListWidget(QWidget):
             client_id,
             parent=self,
         )
+        # "Speichern" leaves the dialog open: the list behind it follows
+        # right away. A client created in the dialog gets selected, so it
+        # can be found.
+        dialog.data_changed.connect(
+            lambda: self._reload(select_client_id=dialog.client_id)
+        )
         dialog.exec()
-        # A client created in the dialog gets selected, so it can be found.
         self._reload(select_client_id=dialog.client_id)
 
     def _on_new_clicked(self) -> None:
@@ -198,6 +214,7 @@ class ClientListWidget(QWidget):
             client_id,
             parent=self,
         )
+        dialog.data_changed.connect(self._reload)
         dialog.exec()
         self._reload()
 
@@ -208,13 +225,19 @@ class ClientListWidget(QWidget):
         self._open_overview_dialog(entry.id)
 
     def _show_context_menu(self, pos: QPoint) -> None:
+        # "Neuer Klient" is offered everywhere - on the empty area below
+        # the rows it is the only entry; a full table has no empty area.
+        menu = QMenu(self)
+        new_action = menu.addAction("Neuer Klient\tStrg+N")
         index = self._table_view.indexAt(pos)
         if not index.isValid():
+            if menu.exec(self._table_view.viewport().mapToGlobal(pos)):
+                self._on_new_clicked()
             return
         self._table_view.selectRow(index.row())
         entry = self._table_model.entry_at(index.row())
 
-        menu = QMenu(self)
+        menu.addSeparator()
         view_action = menu.addAction("Ansicht")
         edit_action = menu.addAction("Bearbeiten")
         menu.addSeparator()
@@ -224,7 +247,9 @@ class ClientListWidget(QWidget):
         delete_action = menu.addAction("Löschen")
 
         chosen = menu.exec(self._table_view.viewport().mapToGlobal(pos))
-        if chosen is view_action:
+        if chosen is new_action:
+            self._on_new_clicked()
+        elif chosen is view_action:
             self._open_overview_dialog(entry.id)
         elif chosen is edit_action:
             self._open_detail_dialog(entry.id)

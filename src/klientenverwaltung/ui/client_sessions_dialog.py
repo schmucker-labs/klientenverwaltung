@@ -1,8 +1,9 @@
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex, QPoint, Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QHBoxLayout,
+    QMenu,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -14,6 +15,7 @@ from klientenverwaltung.services import (
     ServiceError,
     SessionEntry,
 )
+from klientenverwaltung.ui.buttons import CreateButton, action_row, window_row
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     ask_create_treatment_type,
@@ -25,10 +27,12 @@ from klientenverwaltung.ui.report_dialog import ReportDialog
 from klientenverwaltung.ui.session_dialog import SessionDialog
 from klientenverwaltung.ui.session_table_model import (
     COLUMN_TITLES,
+    DATE_COLUMN,
     MEDIA_COLUMN,
     REPORT_COLUMN,
     SessionTableModel,
 )
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.treatment_type_management_dialog import (
     TreatmentTypeManagementDialog,
 )
@@ -48,6 +52,11 @@ class ClientSessionsDialog(QDialog):
     """A client's session history in its own window - split out of
     ClientDetailDialog (see its docstring) because the two together no
     longer fit on a small screen."""
+
+    # The sessions were reloaded after something may have changed (a session
+    # saved or deleted, a report saved) - the window behind this modal one
+    # refreshes what it shows of them (docs/ui-regeln.md).
+    data_changed = Signal()
 
     def __init__(
         self,
@@ -100,6 +109,12 @@ class ClientSessionsDialog(QDialog):
             self._session_table_view.resizeColumnsToContents()
             self._session_table_view.setColumnWidth(MEDIA_COLUMN, 60)
             self._session_table_view.setColumnWidth(REPORT_COLUMN, 60)
+            # Newest first, the order this list has always had.
+            session_header.setSortIndicator(DATE_COLUMN, Qt.SortOrder.DescendingOrder)
+        # A click on a column heading sorts by it (again: the other way
+        # round). Only after restoring: a header state saved before the
+        # columns were sortable would otherwise hide the sort arrow again.
+        self._session_table_view.setSortingEnabled(True)
         # Behandlungsart (treatment type name) is the one open-ended,
         # variable-length column, so it gets the remaining space rather than
         # stretching whichever column happens to be last - Bericht is last
@@ -108,14 +123,23 @@ class ClientSessionsDialog(QDialog):
             session_header, self._session_table_model.columnCount(), 1, restored
         )
         session_header.sectionResized.connect(self._save_table_header_state)
+        session_header.sortIndicatorChanged.connect(self._save_table_header_state)
         self._session_table_view.selectionModel().selectionChanged.connect(
             self._update_button_states
         )
         self._session_table_view.doubleClicked.connect(self._on_session_double_clicked)
+        self._session_table_view.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._session_table_view.customContextMenuRequested.connect(
+            self._show_context_menu
+        )
 
         self._media_button = QPushButton("Medien", self)
         self._report_button = QPushButton("Bericht", self)
-        self._new_session_button = QPushButton("Neue Sitzung", self)
+        self._new_session_button = CreateButton("Neue Sitzung", self)
+        self._new_session_button.setToolTip("Neue Sitzung (Strg+N)")
+        QShortcut(QKeySequence("Ctrl+N"), self, activated=self._on_new_session_clicked)
         self._edit_session_button = QPushButton("Bearbeiten", self)
         self._delete_session_button = QPushButton("Löschen", self)
         self._media_button.setEnabled(False)
@@ -128,24 +152,24 @@ class ClientSessionsDialog(QDialog):
         self._edit_session_button.clicked.connect(self._on_edit_session_clicked)
         self._delete_session_button.clicked.connect(self._on_delete_session_clicked)
 
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(self._media_button)
-        button_row.addWidget(self._report_button)
-        button_row.addWidget(self._new_session_button)
-        button_row.addWidget(self._edit_session_button)
-        button_row.addWidget(self._delete_session_button)
+        button_row = action_row(
+            independent=[self._new_session_button],
+            on_selection=[
+                self._media_button,
+                self._report_button,
+                self._edit_session_button,
+                self._delete_session_button,
+            ],
+        )
 
         close_button = QPushButton("Schließen", self)
+        close_button.setDefault(True)
         close_button.clicked.connect(self.accept)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(close_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._session_table_view, 1)
-        layout.addLayout(button_row)
-        layout.addLayout(close_row)
+        layout.addWidget(button_row)
+        layout.addWidget(window_row(close_button))
 
     def _save_table_header_state(self) -> None:
         save_header_state(
@@ -163,14 +187,34 @@ class ClientSessionsDialog(QDialog):
             [session.id for session in sessions]
         )
 
-    def _reload_sessions(self) -> None:
+    def _reload_sessions(self, select_session_id: int | None = None) -> None:
+        """Reloads the list, keeping the marked session marked (or marking
+        select_session_id, e.g. a session just created) - so "Medien",
+        "Bericht" and "Bearbeiten" can follow one another without clicking
+        the session again each time."""
+        if select_session_id is None:
+            selected = self._selected_session()
+            select_session_id = selected.id if selected is not None else None
         sessions = self._services.treatment_sessions.list_sessions_for_client(
             self._client_id
         )
         self._session_table_model.set_sessions(
             sessions, self._media_counts_for(sessions)
         )
+        # Re-sort after reloading: a model reset forgets prior sort().
+        header = self._session_table_view.horizontalHeader()
+        self._session_table_view.sortByColumn(
+            header.sortIndicatorSection(), header.sortIndicatorOrder()
+        )
+        if select_session_id is not None:
+            select_rows_where(
+                self._session_table_view,
+                lambda row: (
+                    self._session_table_model.session_at(row).id == select_session_id
+                ),
+            )
         self._update_button_states()
+        self.data_changed.emit()
 
     def _selected_session(self) -> SessionEntry | None:
         rows = self._session_table_view.selectionModel().selectedRows()
@@ -184,6 +228,27 @@ class ClientSessionsDialog(QDialog):
         self._report_button.setEnabled(has_selection)
         self._edit_session_button.setEnabled(has_selection)
         self._delete_session_button.setEnabled(has_selection)
+
+    def _show_context_menu(self, pos: QPoint) -> None:
+        """The buttons as a menu, where the mouse already is. "Neue
+        Sitzung" is offered everywhere - on the empty area below the rows
+        it is the only entry; a full table has no empty area."""
+        menu = QMenu(self)
+        new_action = menu.addAction("Neue Sitzung\tStrg+N")
+        handlers = {new_action: self._on_new_session_clicked}
+        index = self._session_table_view.indexAt(pos)
+        if index.isValid():
+            self._session_table_view.selectRow(index.row())
+            menu.addSeparator()
+            handlers[menu.addAction("Medien")] = self._on_media_clicked
+            handlers[menu.addAction("Bericht")] = self._on_report_clicked
+            handlers[menu.addAction("Bearbeiten")] = self._on_edit_session_clicked
+            menu.addSeparator()
+            handlers[menu.addAction("Löschen")] = self._on_delete_session_clicked
+
+        chosen = menu.exec(self._session_table_view.viewport().mapToGlobal(pos))
+        if chosen is not None:
+            handlers[chosen]()
 
     def _on_media_clicked(self) -> None:
         session = self._selected_session()
@@ -202,6 +267,9 @@ class ClientSessionsDialog(QDialog):
         dialog = ReportDialog(
             self._services.treatment_sessions, session, self._client_name, parent=self
         )
+        # Strg+S saves without closing: the checkmark here (and the windows
+        # behind) follow right away, not only once the report is closed.
+        dialog.saved.connect(self._reload_sessions)
         # Always reload, not just on Accepted: Strg+S saves without closing,
         # and even the "Abbrechen" -> "Speichern" prompt path can save
         # before returning Rejected - so the dialog's result alone can't
@@ -220,7 +288,8 @@ class ClientSessionsDialog(QDialog):
             parent=self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._reload_sessions()
+            # The new session gets marked, so it can be found.
+            self._reload_sessions(select_session_id=dialog.session_id)
 
     def _ensure_active_treatment_type_exists(self) -> bool:
         """Guards "Neue Sitzung": with no active treatment type to pick,

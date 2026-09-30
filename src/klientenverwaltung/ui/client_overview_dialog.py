@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.services import ClientDetails
+from klientenverwaltung.ui.buttons import ButtonRow
 from klientenverwaltung.ui.client_detail_dialog import ClientDetailDialog
 from klientenverwaltung.ui.client_report_history_dialog import (
     ClientReportHistoryDialog,
@@ -27,9 +28,15 @@ _SECTION_SPACING = 18
 class ClientOverviewDialog(QDialog):
     """Read-only Klientenübersicht (Auftrag B1) - no input fields, just a
     letter-style summary of a client's data. "Sitzungen"/"Bearbeiten" open
-    the existing dialogs and this view reloads its content afterwards, so
-    it never shows stale data, counts or a stale window title.
+    the existing dialogs and this view reloads its content whenever
+    something is saved in them (their data_changed signal - "Speichern"
+    does not close the Bearbeiten window) and once more when they close,
+    so it never shows stale data, counts or a stale window title.
     """
+
+    # Passed on from the windows opened here, for the client list behind
+    # this modal one (docs/ui-regeln.md).
+    data_changed = Signal()
 
     def __init__(
         self,
@@ -64,17 +71,15 @@ class ClientOverviewDialog(QDialog):
         self._edit_button.clicked.connect(self._on_edit_clicked)
         close_button.clicked.connect(self.accept)
 
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._report_button)
-        button_row.addWidget(self._sessions_button)
-        button_row.addStretch()
-        button_row.addWidget(self._edit_button)
-        button_row.addWidget(close_button)
+        button_row = ButtonRow(
+            left=[self._report_button, self._sessions_button],
+            right=[self._edit_button, close_button],
+        )
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._archived_label)
         layout.addWidget(self._scroll_area, 1)
-        layout.addLayout(button_row)
+        layout.addWidget(button_row)
 
         self._reload()
 
@@ -262,6 +267,8 @@ class ClientOverviewDialog(QDialog):
             client_name,
             parent=self,
         )
+        dialog.data_changed.connect(self._reload)
+        dialog.data_changed.connect(self.data_changed)
         dialog.exec()
         self._reload()
 
@@ -271,5 +278,7 @@ class ClientOverviewDialog(QDialog):
             self._client_id,
             parent=self,
         )
+        dialog.data_changed.connect(self._reload)
+        dialog.data_changed.connect(self.data_changed)
         dialog.exec()
         self._reload()

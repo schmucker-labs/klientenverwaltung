@@ -38,8 +38,10 @@ from klientenverwaltung.services import (
     SessionEntry,
     TreatmentSessionService,
 )
+from klientenverwaltung.ui.buttons import ToolbarButton
 from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
 from klientenverwaltung.ui.growing_text_edit import GrowingTextEdit
+from klientenverwaltung.ui.scrollbar_gap import keep_clear_of_scrollbar
 from klientenverwaltung.ui.theme import ColorPalette, get_palette, load_theme_mode
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
@@ -234,6 +236,9 @@ class ReportDialog(QDialog):
     text color of its own, always the active theme's.
     """
 
+    # The report was stored - also by Strg+S, which leaves this window open.
+    saved = Signal()
+
     def __init__(
         self,
         treatment_session_service: TreatmentSessionService,
@@ -267,9 +272,18 @@ class ReportDialog(QDialog):
 
         toolbar = self._build_toolbar()
 
+        layout = QVBoxLayout(self)
+        # Two distances only, both from the style rather than fixed numbers:
+        # the dialog's own margin between its blocks (heading, toolbar, each
+        # labeled field, buttons), the layouts' default spacing inside one
+        # (a label and its field, the toolbar's controls).
+        gutter = layout.contentsMargins().right()
+        layout.setSpacing(gutter)
+
         scroll_content = QWidget(self)
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(gutter)
         scroll_layout.addWidget(self._build_labeled_field("Bericht", self._report_edit))
         scroll_layout.addWidget(
             self._build_labeled_field("Impulse", self._impulses_edit)
@@ -280,6 +294,9 @@ class ReportDialog(QDialog):
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_area.setWidget(scroll_content)
+        # Without a scrollbar the fields reach the dialog's right edge, in
+        # line with the heading and the buttons.
+        keep_clear_of_scrollbar(self._scroll_area, gutter)
 
         self._make_cursor_follow_scroll(self._report_edit)
         self._make_cursor_follow_scroll(self._impulses_edit)
@@ -295,7 +312,6 @@ class ReportDialog(QDialog):
         button_box.accepted.connect(self._on_save_and_close)
         button_box.rejected.connect(self.reject)
 
-        layout = QVBoxLayout(self)
         layout.addWidget(heading)
         layout.addWidget(toolbar)
         layout.addWidget(self._scroll_area, 1)
@@ -357,6 +373,9 @@ class ReportDialog(QDialog):
         self._underline_button.clicked.connect(self._toggle_underline)
 
         row = QHBoxLayout()
+        # No margins of its own: the toolbar starts at the same left edge as
+        # the heading above and the fields below it.
+        row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self._style_combo)
         row.addWidget(self._bold_button)
         row.addWidget(self._italic_button)
@@ -386,9 +405,9 @@ class ReportDialog(QDialog):
         color and one in its checked/on-accent contrast color, so
         _update_toolbar_state() can swap between them without re-rendering.
         """
-        button = QPushButton(self)
+        # One height for the whole toolbar: a square as tall as the style box.
+        button = ToolbarButton(self._style_combo, self)
         button.setCheckable(True)
-        button.setFixedWidth(36)
         button.setIconSize(QSize(_TOOLBAR_ICON_SIZE, _TOOLBAR_ICON_SIZE))
         button.setToolTip(f"{tooltip} (Strg+{shortcut[-1]})")
         # The letter is an icon, not text - name it for screen readers.
@@ -467,7 +486,7 @@ class ReportDialog(QDialog):
     def _build_labeled_field(label_text: str, field: QTextEdit) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 12)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(QLabel(label_text, panel))
         layout.addWidget(field)
         return panel
@@ -592,6 +611,7 @@ class ReportDialog(QDialog):
         self._original_report_html = self._report_edit.toHtml()
         self._original_impulses_html = self._impulses_edit.toHtml()
         self._update_save_enabled()
+        self.saved.emit()
         return True
 
     def _on_save_clicked(self) -> None:

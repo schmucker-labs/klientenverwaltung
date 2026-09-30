@@ -158,6 +158,25 @@ def ask_save_discard_cancel(
     return "cancel"
 
 
+def ask_save_possible_duplicate(message: str, *, parent: QWidget | None = None) -> bool:
+    """Shown before a client is saved whose name already exists; message is
+    the DuplicateClientError's text, listing the existing clients. Defaults
+    to "Abbrechen", so that Enter does not create the same person twice.
+    True for "Trotzdem speichern" - two people may well share a name."""
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Warning)
+    box.setWindowTitle("Klient möglicherweise schon vorhanden")
+    box.setText(
+        f"{message}\n\nMöglicherweise ist das dieselbe Person. Soll dieser "
+        "Klient trotzdem gespeichert werden?"
+    )
+    save_button = box.addButton("Trotzdem speichern", QMessageBox.ButtonRole.AcceptRole)
+    cancel_button = box.addButton("Abbrechen", QMessageBox.ButtonRole.RejectRole)
+    box.setDefaultButton(cancel_button)
+    _exec_in_front(box)
+    return box.clickedButton() is save_button
+
+
 def ask_confirm_deactivate(
     message: str, *, title: str, parent: QWidget | None = None
 ) -> bool:

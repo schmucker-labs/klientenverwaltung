@@ -1,6 +1,6 @@
 from datetime import date
 
-from PySide6.QtCore import QByteArray, QSettings, Qt
+from PySide6.QtCore import QByteArray, QSettings, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -22,20 +22,30 @@ from PySide6.QtWidgets import (
 from klientenverwaltung.app_context import AppServices
 from klientenverwaltung.services import (
     ClientDetails,
+    DuplicateClientError,
     ServiceError,
+    ValidationError,
 )
+from klientenverwaltung.ui.buttons import window_row
 from klientenverwaltung.ui.client_sessions_dialog import ClientSessionsDialog
-from klientenverwaltung.ui.dialogs import ask_save_discard_cancel, show_error
+from klientenverwaltung.ui.dialogs import (
+    ask_save_discard_cancel,
+    ask_save_possible_duplicate,
+    show_error,
+)
 from klientenverwaltung.ui.optional_date_edit import OptionalDateEdit
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _SALUTATION_SUGGESTIONS = ["", "Herr", "Frau", "Herr Dr.", "Frau Dr."]
-_GEOMETRY_SETTINGS_KEY = "client_detail/geometry"
+# Not "client_detail/geometry": that one holds sizes saved for the earlier,
+# narrow single-column window, which would squeeze the two halves.
+_GEOMETRY_SETTINGS_KEY = "client_detail/two_column_geometry"
 _SPLITTER_SETTINGS_KEY = "client_detail/splitter_state"
 
 
 class ClientDetailDialog(QDialog):
-    """A client's master data (Stammdaten, Anliegen, Notizen).
+    """A client's master data, in two halves: the form (Stammdaten) on the
+    left, Anliegen and Notizen on the right.
 
     Sessions used to live in a table embedded right here, but that made
     the window too tall for a small screen (e.g. 1366x768) even with a
@@ -44,6 +54,11 @@ class ClientDetailDialog(QDialog):
     bottom, which also always shows the count and most recent date without
     having to open it.
     """
+
+    # The client was saved ("Speichern" leaves this window open), or its
+    # sessions changed in the window opened from here - the window behind
+    # this modal one refreshes what it shows (docs/ui-regeln.md).
+    data_changed = Signal()
 
     def __init__(
         self,
@@ -55,7 +70,7 @@ class ClientDetailDialog(QDialog):
         self._services = services
         self._client_id = client_id
 
-        self.resize(700, 800)
+        self.resize(1100, 660)
         self.setModal(True)
         restore_geometry(self, _GEOMETRY_SETTINGS_KEY)
 
@@ -108,18 +123,16 @@ class ClientDetailDialog(QDialog):
         form.addRow("E-Mail:", self._email_edit)
         form.addRow("Aufmerksam geworden durch:", self._referral_source_edit)
         form.addRow("Einwilligung vom:", self._consent_date_edit)
-
-        self._save_client_button = QPushButton("Speichern", self)
-        self._save_client_button.setDefault(True)
-        self._save_client_button.clicked.connect(self._on_save_clicked)
-        # Enter inside Anliegen/Notizen is a line break (docs/ui-regeln.md):
-        # Strg+S saves and stays, Strg+Enter saves and closes.
-        QShortcut(QKeySequence("Ctrl+S"), self, activated=self._on_save_clicked)
-        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_save_and_close)
-        QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._on_save_and_close)
-        save_row = QHBoxLayout()
-        save_row.addStretch()
-        save_row.addWidget(self._save_client_button)
+        # Where a ValidationError's field puts the cursor (see _save).
+        self._field_edits: dict[str, QLineEdit] = {
+            "first_name": self._first_name_edit,
+            "last_name": self._last_name_edit,
+            "street": self._street_edit,
+            "postal_code": self._postal_code_edit,
+            "city": self._city_edit,
+            "phone": self._phone_edit,
+            "email": self._email_edit,
+        }
 
         self._concern_edit = QTextEdit(self)
         self._notes_edit = QTextEdit(self)
@@ -156,34 +169,69 @@ class ClientDetailDialog(QDialog):
         sessions_section.addWidget(self._sessions_last_date_label)
         sessions_section.addWidget(self._sessions_next_date_label)
 
+        # Saves both halves, so it sits below them, next to "Schließen" -
+        # never scrolled out of view.
+        self._save_client_button = QPushButton("Speichern", self)
+        self._save_client_button.setDefault(True)
+        self._save_client_button.clicked.connect(self._on_save_clicked)
+        # Enter inside Anliegen/Notizen is a line break (docs/ui-regeln.md):
+        # Strg+S saves and stays, Strg+Enter saves and closes.
+        QShortcut(QKeySequence("Ctrl+S"), self, activated=self._on_save_clicked)
+        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._on_save_and_close)
+        QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._on_save_and_close)
         close_button = QPushButton("Schließen", self)
         close_button.clicked.connect(self.reject)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(close_button)
 
-        # The form + splitter combined would need more height than fits on
-        # a small screen (e.g. 1366x768) - wrapped in a QScrollArea, the
-        # dialog's own minimum height stays small (just enough to show a
-        # scrollbar) instead of forcing the window itself taller than the
-        # screen. The Sitzungen button and the close button stay outside/
+        layout = QVBoxLayout(self)
+        # One measure for every gap around the form's scrollbar: the dialog's
+        # own margin (from the style, not a fixed number).
+        gutter = layout.contentsMargins().right()
+
+        # Left half: the form. On a small screen (e.g. 1366x768 with a
+        # scaled-up display) it does not fit - wrapped in a QScrollArea, the
+        # dialog's own minimum height stays small instead of forcing the
+        # window taller than the screen. The Sitzungen button stays outside/
         # below it, always visible without having to scroll down.
         scroll_content = QWidget(self)
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        # The right margin keeps the input fields clear of the scrollbar.
+        # Together with the columns' spacing below, the scrollbar ends up
+        # centered in the gap between the two halves (gutter on either
+        # side); without a scrollbar that gap is simply twice the gutter.
+        scroll_layout.setContentsMargins(0, 0, gutter, 0)
         scroll_layout.addLayout(form)
-        scroll_layout.addLayout(save_row)
-        scroll_layout.addWidget(self._splitter, 1)
+        scroll_layout.addStretch()
 
-        scroll_area = QScrollArea(self)
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setWidget(scroll_content)
+        self._scroll_area = QScrollArea(self)
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._scroll_area.setWidget(scroll_content)
+        # Never narrower than the form itself - there is no horizontal
+        # scrollbar to reach a cut-off field with.
+        self._scroll_area.setMinimumWidth(
+            scroll_content.minimumSizeHint().width()
+            + self._scroll_area.verticalScrollBar().sizeHint().width()
+        )
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(scroll_area, 1)
-        layout.addLayout(sessions_section)
-        layout.addLayout(close_row)
+        # Same right edge as the form's fields above it.
+        sessions_section.setContentsMargins(0, 0, gutter, 0)
+        left_half = QVBoxLayout()
+        left_half.addWidget(self._scroll_area, 1)
+        left_half.addLayout(sessions_section)
+
+        # Right half: only Anliegen and Notizen, over the full height - and
+        # never squeezed down to a few words per line.
+        self._splitter.setMinimumWidth(300)
+        halves = QHBoxLayout()
+        halves.setSpacing(gutter)
+        halves.addLayout(left_half, 1)
+        halves.addWidget(self._splitter, 1)
+
+        layout.addLayout(halves, 1)
+        layout.addWidget(window_row(self._save_client_button, close_button))
 
     @staticmethod
     def _build_labeled_panel(label_text: str, content: QWidget) -> QWidget:
@@ -280,21 +328,42 @@ class ClientDetailDialog(QDialog):
 
     def _save(self) -> bool:
         values = self._collect_form_values()
-        try:
-            if self._client_id is None:
-                client = self._services.clients.create_client(**values)
-                self._client_id = client.id
-            else:
-                client = self._services.clients.update_client(self._client_id, **values)
-        except ServiceError as exc:
-            show_error(str(exc), parent=self)
-            return False
+        clients = self._services.clients
+        allow_duplicate = False
+        while True:
+            try:
+                if self._client_id is None:
+                    client = clients.create_client(
+                        **values, allow_duplicate=allow_duplicate
+                    )
+                    self._client_id = client.id
+                else:
+                    client = clients.update_client(
+                        self._client_id, **values, allow_duplicate=allow_duplicate
+                    )
+                break
+            except DuplicateClientError as exc:
+                # Everything else is in order (the service checks this
+                # last) - the user decides, then the same save runs again.
+                if not ask_save_possible_duplicate(str(exc), parent=self):
+                    return False
+                allow_duplicate = True
+            except ServiceError as exc:
+                show_error(str(exc), parent=self)
+                if isinstance(exc, ValidationError) and exc.field in self._field_edits:
+                    # Straight to the field that needs correcting.
+                    field_edit = self._field_edits[exc.field]
+                    self._scroll_area.ensureWidgetVisible(field_edit)
+                    field_edit.setFocus()
+                    field_edit.selectAll()
+                return False
         # Show what was stored - the service normalizes casing - not the
         # raw input.
         self._populate_form(client)
         self._original_values = self._collect_form_values()
         self.setWindowTitle(f"Klient: {client.first_name} {client.last_name}")
         self._update_sessions_button()
+        self.data_changed.emit()
         return True
 
     def _on_save_clicked(self) -> None:
@@ -322,6 +391,8 @@ class ClientDetailDialog(QDialog):
             client_name.strip(),
             parent=self,
         )
+        dialog.data_changed.connect(self._update_sessions_button)
+        dialog.data_changed.connect(self.data_changed)
         dialog.exec()
         self._update_sessions_button()
 

@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QFileDialog,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QTableView,
@@ -23,6 +22,7 @@ from klientenverwaltung.services.media_service import (
     MediaService,
     SessionMediaEntry,
 )
+from klientenverwaltung.ui.buttons import CreateButton, action_row, window_row
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     ask_use_existing_file,
@@ -35,6 +35,7 @@ from klientenverwaltung.ui.media_import_worker import MediaImportWorker
 from klientenverwaltung.ui.media_table_model import COLUMN_TITLES, MediaTableModel
 from klientenverwaltung.ui.rename_media_dialog import RenameMediaDialog
 from klientenverwaltung.ui.select_existing_media_dialog import SelectExistingMediaDialog
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -108,7 +109,7 @@ class MediaDialog(QDialog):
         self._table_view.verticalHeader().setVisible(False)
         self._table_view.doubleClicked.connect(self._on_open_clicked)
 
-        self._attach_button = QPushButton("Neue Datei …", self)
+        self._attach_button = CreateButton("Neue Datei …", self)
         self._select_existing_button = QPushButton("Aus vorhandenen Medien …", self)
         self._open_button = QPushButton("Öffnen", self)
         self._rename_button = QPushButton("Umbenennen", self)
@@ -123,25 +124,24 @@ class MediaDialog(QDialog):
         self._remove_link_button.clicked.connect(self._on_remove_link_clicked)
         QShortcut(QKeySequence("F2"), self, activated=self._on_rename_clicked)
 
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._attach_button)
-        button_row.addWidget(self._select_existing_button)
-        button_row.addWidget(self._open_button)
-        button_row.addWidget(self._rename_button)
-        button_row.addWidget(self._remove_link_button)
-        button_row.addStretch()
+        button_row = action_row(
+            independent=[self._attach_button, self._select_existing_button],
+            on_selection=[
+                self._open_button,
+                self._rename_button,
+                self._remove_link_button,
+            ],
+        )
 
         self._close_button = QPushButton("Schließen", self)
+        self._close_button.setDefault(True)
         self._close_button.clicked.connect(self.accept)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(self._close_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(heading)
         layout.addWidget(self._table_view, 1)
-        layout.addLayout(button_row)
-        layout.addLayout(close_row)
+        layout.addWidget(button_row)
+        layout.addWidget(window_row(self._close_button))
 
         self._reload_media()
 
@@ -170,9 +170,19 @@ class MediaDialog(QDialog):
         save_geometry(self, _GEOMETRY_SETTINGS_KEY)
         super().done(result)
 
-    def _reload_media(self) -> None:
+    def _reload_media(self, select_media_id: int | None = None) -> None:
+        """Reloads the list, keeping the marked file marked (or marking
+        select_media_id, e.g. a file just added)."""
+        if select_media_id is None:
+            selected = self._selected_entry()
+            select_media_id = selected.media_id if selected is not None else None
         entries = self._media_service.list_media_for_session(self._session_id)
         self._table_model.set_entries(entries)
+        if select_media_id is not None:
+            select_rows_where(
+                self._table_view,
+                lambda row: self._table_model.entry_at(row).media_id == select_media_id,
+            )
         self._update_button_states()
 
     def _selected_entry(self) -> SessionMediaEntry | None:
@@ -282,7 +292,10 @@ class MediaDialog(QDialog):
         source_path = self._pending_source_path
         self._loading_dialog.finish()
         self._cleanup_thread()
-        self._reload_media()
+        # The file just added gets marked, so it can be found.
+        self._reload_media(
+            select_media_id=outcome.media.id if outcome.media is not None else None
+        )
         if outcome.status == "imported":
             show_info(
                 "Die Datei wurde auf die Datenplatte übernommen. Das Original "

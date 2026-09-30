@@ -1,8 +1,7 @@
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QHBoxLayout,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -14,11 +13,13 @@ from klientenverwaltung.services import (
     TreatmentTypeEntry,
     TreatmentTypeService,
 )
+from klientenverwaltung.ui.buttons import CreateButton, action_row, window_row
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_deactivate,
     ask_confirm_delete,
     show_error,
 )
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.treatment_type_edit_dialog import TreatmentTypeEditDialog
 from klientenverwaltung.ui.treatment_type_table_model import (
     COLUMN_TITLES,
@@ -45,6 +46,10 @@ def _session_count_phrase(count: int) -> str:
 
 
 class TreatmentTypeManagementDialog(QDialog):
+    # The list was reloaded after a treatment type may have changed - the
+    # client list behind this modal window names them (docs/ui-regeln.md).
+    data_changed = Signal()
+
     def __init__(
         self,
         treatment_type_service: TreatmentTypeService,
@@ -82,7 +87,7 @@ class TreatmentTypeManagementDialog(QDialog):
         )
         self._table_view.doubleClicked.connect(self._on_row_double_clicked)
 
-        self._new_button = QPushButton("Neu", self)
+        self._new_button = CreateButton("Neue Behandlungsart", self)
         self._edit_button = QPushButton("Bearbeiten", self)
         self._toggle_active_button = QPushButton("Deaktivieren", self)
         self._delete_button = QPushButton("Löschen", self)
@@ -94,23 +99,23 @@ class TreatmentTypeManagementDialog(QDialog):
         self._toggle_active_button.clicked.connect(self._on_toggle_active_clicked)
         self._delete_button.clicked.connect(self._on_delete_clicked)
 
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._new_button)
-        button_row.addStretch()
-        button_row.addWidget(self._edit_button)
-        button_row.addWidget(self._toggle_active_button)
-        button_row.addWidget(self._delete_button)
+        button_row = action_row(
+            independent=[self._new_button],
+            on_selection=[
+                self._edit_button,
+                self._toggle_active_button,
+                self._delete_button,
+            ],
+        )
 
         close_button = QPushButton("Schließen", self)
+        close_button.setDefault(True)
         close_button.clicked.connect(self.close)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(close_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table_view)
-        layout.addLayout(button_row)
-        layout.addLayout(close_row)
+        layout.addWidget(button_row)
+        layout.addWidget(window_row(close_button))
 
         self._reload()
 
@@ -146,17 +151,33 @@ class TreatmentTypeManagementDialog(QDialog):
         else:
             self._toggle_active_button.setText("Deaktivieren")
 
-    def _reload(self) -> None:
+    def _reload(self, select_type_id: int | None = None) -> None:
+        """Reloads the list, keeping the marked treatment type marked (or
+        marking select_type_id, e.g. one just created)."""
+        if select_type_id is None:
+            selected = self._selected_type()
+            select_type_id = selected.id if selected is not None else None
         types = self._service.list_treatment_types(include_inactive=True)
         self._table_model.set_types(types)
+        if select_type_id is not None:
+            select_rows_where(
+                self._table_view,
+                lambda row: self._table_model.type_at(row).id == select_type_id,
+            )
         self._update_button_states()
+        self.data_changed.emit()
 
     def _on_new_clicked(self) -> None:
         dialog = TreatmentTypeEditDialog(
             self._service, treatment_type_id=None, parent=self
         )
+        # Strg+S saves without closing: the list follows right away. The
+        # new treatment type gets marked, so it can be found.
+        dialog.saved.connect(
+            lambda: self._reload(select_type_id=dialog.treatment_type_id)
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._reload()
+            self._reload(select_type_id=dialog.treatment_type_id)
 
     def _on_row_double_clicked(self, index: QModelIndex) -> None:
         if index.isValid():
@@ -169,6 +190,7 @@ class TreatmentTypeManagementDialog(QDialog):
         dialog = TreatmentTypeEditDialog(
             self._service, treatment_type_id=treatment_type.id, parent=self
         )
+        dialog.saved.connect(self._reload)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload()
 

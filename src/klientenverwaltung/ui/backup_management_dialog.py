@@ -19,6 +19,7 @@ from klientenverwaltung import backup, config, storage
 from klientenverwaltung.app_context import OpenDatabase
 from klientenverwaltung.backup import RestorableBackup
 from klientenverwaltung.ui.backup_table_model import COLUMN_TITLES, BackupTableModel
+from klientenverwaltung.ui.buttons import action_row, window_row
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     ask_confirm_restore,
@@ -27,6 +28,7 @@ from klientenverwaltung.ui.dialogs import (
     show_info,
 )
 from klientenverwaltung.ui.password_dialog import ask_for_password
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -114,19 +116,14 @@ class BackupManagementDialog(QDialog):
         self._delete_button.clicked.connect(self._on_delete_clicked)
         self._open_folder_button.clicked.connect(self._on_open_folder_clicked)
 
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._restore_button)
-        button_row.addWidget(self._backup_now_button)
-        button_row.addWidget(self._delete_button)
-        button_row.addWidget(self._open_folder_button)
-        button_row.addStretch()
+        button_row = action_row(
+            independent=[self._backup_now_button, self._open_folder_button],
+            on_selection=[self._restore_button, self._delete_button],
+        )
 
         close_button = QPushButton("Schließen", self)
         close_button.setDefault(True)
         close_button.clicked.connect(self.accept)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(close_button)
 
         media_note = QLabel(
             "Hinweis: Sicherungen enthalten die Datenbank (Klienten, Sitzungen, "
@@ -141,8 +138,8 @@ class BackupManagementDialog(QDialog):
         layout.addWidget(self._folder_error_label)
         layout.addWidget(self._table_view)
         layout.addWidget(media_note)
-        layout.addLayout(button_row)
-        layout.addLayout(close_row)
+        layout.addWidget(button_row)
+        layout.addWidget(window_row(close_button))
 
         self._reload_table()
 
@@ -161,11 +158,18 @@ class BackupManagementDialog(QDialog):
         return config.get_backup_folder_path() or self._drive_root
 
     def _reload_table(self) -> None:
+        """Reloads the list, keeping the marked backup marked."""
+        selected = self._selected_entry()
         self._table_model.set_entries(
             backup.list_restorable_backups(
                 self._drive_root, config.get_backup_folder_path()
             )
         )
+        if selected is not None:
+            select_rows_where(
+                self._table_view,
+                lambda row: self._table_model.entry_at(row).path == selected.path,
+            )
         self._update_button_states()
 
     def _update_button_states(self) -> None:

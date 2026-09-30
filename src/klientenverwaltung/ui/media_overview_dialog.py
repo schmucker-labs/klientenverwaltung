@@ -3,7 +3,6 @@ from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QPushButton,
@@ -13,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from klientenverwaltung.services import MediaOverviewEntry, MediaService, ServiceError
+from klientenverwaltung.ui.buttons import action_row, window_row
 from klientenverwaltung.ui.dialogs import (
     ask_confirm_delete,
     show_error,
@@ -26,6 +26,7 @@ from klientenverwaltung.ui.media_overview_table_model import (
 )
 from klientenverwaltung.ui.media_table_model import format_size_bytes
 from klientenverwaltung.ui.rename_media_dialog import RenameMediaDialog
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -122,24 +123,24 @@ class MediaOverviewDialog(QDialog):
         self._delete_button.clicked.connect(self._on_delete_clicked)
         QShortcut(QKeySequence("F2"), self, activated=self._on_rename_clicked)
 
-        button_row = QHBoxLayout()
-        button_row.addWidget(self._open_button)
-        button_row.addWidget(self._rename_button)
-        button_row.addWidget(self._delete_button)
-        button_row.addStretch()
+        button_row = action_row(
+            on_selection=[
+                self._open_button,
+                self._rename_button,
+                self._delete_button,
+            ]
+        )
 
         close_button = QPushButton("Schließen", self)
+        close_button.setDefault(True)
         close_button.clicked.connect(self.accept)
-        close_row = QHBoxLayout()
-        close_row.addStretch()
-        close_row.addWidget(close_button)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._table_view, 1)
         layout.addWidget(self._usage_panel)
         layout.addWidget(self._footer_label)
-        layout.addLayout(button_row)
-        layout.addLayout(close_row)
+        layout.addWidget(button_row)
+        layout.addWidget(window_row(close_button))
 
         self._update_footer()
         self._update_button_states()
@@ -163,9 +164,17 @@ class MediaOverviewDialog(QDialog):
         super().done(result)
 
     def _reload(self) -> None:
+        """Reloads the list, keeping the marked files marked."""
+        # By stored filename: an unknown file has no media id.
+        selected = {entry.stored_filename for entry in self._selected_entries()}
         self._entries = self._media_service.list_all_media()
         self._table_model.set_entries(self._entries)
         self._apply_current_sort()
+        if selected:
+            select_rows_where(
+                self._table_view,
+                lambda row: self._table_model.entry_at(row).stored_filename in selected,
+            )
         self._update_footer()
         self._update_button_states()
         self._update_usage_panel()

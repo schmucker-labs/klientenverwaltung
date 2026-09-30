@@ -50,7 +50,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Klientenverwaltung")
         self.resize(1000, 700)
-        self.setCentralWidget(ClientListWidget(services))
+        self._client_list = ClientListWidget(services)
+        self.setCentralWidget(self._client_list)
         self._build_menu()
         self._build_status_bar()
         self._refresh_theme_controls()
@@ -185,6 +186,8 @@ class MainWindow(QMainWindow):
         dialog = TreatmentTypeManagementDialog(
             self._services.treatment_types, parent=self
         )
+        # The list names the treatment type of each "Nächster Termin".
+        dialog.data_changed.connect(self._client_list.refresh)
         dialog.exec()
 
     def _open_media_overview_dialog(self) -> None:

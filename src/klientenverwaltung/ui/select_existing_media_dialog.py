@@ -2,7 +2,6 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
-    QHBoxLayout,
     QLineEdit,
     QPushButton,
     QTableView,
@@ -11,11 +10,13 @@ from PySide6.QtWidgets import (
 )
 
 from klientenverwaltung.services import MediaService, ServiceError
+from klientenverwaltung.ui.buttons import window_row
 from klientenverwaltung.ui.dialogs import show_error
 from klientenverwaltung.ui.media_picker_table_model import (
     COLUMN_TITLES,
     MediaPickerTableModel,
 )
+from klientenverwaltung.ui.table_selection import select_rows_where
 from klientenverwaltung.ui.window_settings import (
     finalize_column_widths,
     restore_geometry,
@@ -90,15 +91,10 @@ class SelectExistingMediaDialog(QDialog):
         cancel_button = QPushButton("Abbrechen", self)
         cancel_button.clicked.connect(self.reject)
 
-        button_row = QHBoxLayout()
-        button_row.addStretch()
-        button_row.addWidget(self._add_button)
-        button_row.addWidget(cancel_button)
-
         layout = QVBoxLayout(self)
         layout.addWidget(self._search_edit)
         layout.addWidget(self._table_view, 1)
-        layout.addLayout(button_row)
+        layout.addWidget(window_row(self._add_button, cancel_button))
 
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -118,12 +114,23 @@ class SelectExistingMediaDialog(QDialog):
         super().done(result)
 
     def _reload(self) -> None:
+        """Reloads the list for the search text, keeping marked files
+        marked as long as they still match it."""
+        selected = {
+            self._table_model.entry_at(index.row()).media_id
+            for index in self._table_view.selectionModel().selectedRows()
+        }
         search = self._search_edit.text().strip() or None
         self._table_model.set_entries(
             self._media_service.list_unlinked_media_for_session(
                 self._session_id, search=search
             )
         )
+        if selected:
+            select_rows_where(
+                self._table_view,
+                lambda row: self._table_model.entry_at(row).media_id in selected,
+            )
         self._update_button_states()
 
     def _update_button_states(self) -> None:

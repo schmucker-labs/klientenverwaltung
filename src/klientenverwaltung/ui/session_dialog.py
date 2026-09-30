@@ -107,6 +107,11 @@ class SessionDialog(QDialog):
 
         self._original_values = self._collect_values()
 
+    @property
+    def session_id(self) -> int | None:
+        """The session shown - also set once a new session was saved."""
+        return self._session_id
+
     def _collect_values(self) -> dict[str, object]:
         return {
             "date": self._date_edit.dateTime().toPython(),

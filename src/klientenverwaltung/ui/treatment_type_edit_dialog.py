@@ -1,3 +1,4 @@
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDialog,
@@ -17,6 +18,10 @@ _GEOMETRY_SETTINGS_KEY = "treatment_type_edit/geometry"
 
 
 class TreatmentTypeEditDialog(QDialog):
+    # The treatment type was stored - also by Strg+S, which leaves this
+    # window open.
+    saved = Signal()
+
     def __init__(
         self,
         treatment_type_service: TreatmentTypeService,
@@ -67,6 +72,11 @@ class TreatmentTypeEditDialog(QDialog):
 
         self._original_values = self._collect_values()
 
+    @property
+    def treatment_type_id(self) -> int | None:
+        """The treatment type shown - also set once a new one was saved."""
+        return self._treatment_type_id
+
     def _collect_values(self) -> dict[str, object]:
         return {
             "name": self._name_edit.text().strip(),
@@ -89,6 +99,7 @@ class TreatmentTypeEditDialog(QDialog):
             return False
         self._original_values = values
         self._saved = True
+        self.saved.emit()
         return True
 
     def _on_save_clicked(self) -> None:
