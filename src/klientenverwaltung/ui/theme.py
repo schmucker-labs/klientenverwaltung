@@ -377,6 +377,10 @@ def build_stylesheet(palette: ColorPalette) -> str:
             border: 1px solid {p.lines};
             border-radius: 4px;
             padding: 4px 8px;
+            /* Selected text like a selected table row - unset, it is the
+               Windows system blue, the one color not from the theme. */
+            selection-background-color: {p.selection_background};
+            selection-color: {p.selection_text};
         }}
         QLineEdit:focus, QComboBox:focus,
         QTextEdit:focus, QPlainTextEdit:focus, QAbstractSpinBox:focus {{

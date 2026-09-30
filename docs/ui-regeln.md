@@ -112,7 +112,9 @@ oder eine Tabelle mit Spalten hinzukommt.
   Flächen, Text, Sekundärtext, Akzent, Sekundärakzent, Linien, Hover, markierte Zeile
   (Hintergrund + Text), Fehler-/Warnfarbe, deaktivierte Elemente, Fokusrahmen,
   archivierte Einträge, schwebende Flächen (Menüs, Auswahllisten, Tooltips: Fläche +
-  Rand). Stylesheets setzen nur Farben, nie Abstände oder Schriftgrößen.
+  Rand). Stylesheets setzen nur Farben, nie Abstände oder Schriftgrößen. Markierter
+  Text in Eingabefeldern hat dieselben Farben wie eine markierte Tabellenzeile, nicht
+  das Windows-Blau.
 - Es gibt drei Themes (`ThemeMode` in `ui/theme.py`): "Hell", "Dämmerung" (warmes
   Dunkel) und "Dunkel" (neutrales Graphit, Flächen nach Helligkeit geschichtet: je
   heller, desto weiter oben). Ein weiteres Theme ist eine weitere `ColorPalette` plus
