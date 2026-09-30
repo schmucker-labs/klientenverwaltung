@@ -427,3 +427,23 @@ class TestBackupFolderWarning:
 
     def test_no_warning_for_a_folder_on_another_local_drive(self) -> None:
         assert backup.backup_folder_warning(Path("D:/Sicherungen"), Path("E:/")) is None
+
+
+class TestBackupProtectionGap:
+    """Why the current setup does not protect against losing the data drive
+    (None = it does) - drives the status bar and the weekly reminder."""
+
+    def test_no_backup_folder_is_a_gap(self) -> None:
+        gap = backup.backup_protection_gap(None, Path("E:/"))
+
+        assert gap is not None
+        assert "kein Sicherungsordner" in gap
+
+    def test_a_backup_folder_on_the_data_drive_itself_is_a_gap(self) -> None:
+        gap = backup.backup_protection_gap(Path("E:/Sicherungen"), Path("E:/"))
+
+        assert gap is not None
+        assert "Datenplatte selbst" in gap
+
+    def test_a_backup_folder_on_another_drive_is_no_gap(self) -> None:
+        assert backup.backup_protection_gap(Path("D:/Sicherungen"), Path("E:/")) is None

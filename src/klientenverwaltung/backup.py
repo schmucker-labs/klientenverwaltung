@@ -239,9 +239,36 @@ def back_up_if_changed(engine: Engine, db_path: Path, folder: Path) -> Path | No
 _CLOUD_SYNC_FOLDER_PREFIXES = ("onedrive", "dropbox", "google drive", "icloud")
 
 
+def is_on_same_drive(folder: Path, drive_root: Path) -> bool:
+    return bool(folder.drive) and folder.drive.casefold() == drive_root.drive.casefold()
+
+
+def backup_protection_gap(
+    configured_folder: Path | None, drive_root: Path
+) -> str | None:
+    """Why the current setup would not survive losing the data drive, as a
+    German sentence - or None if backups go to another drive.
+
+    Covers a folder that was configured before the program warned about it
+    (or despite the warning): the status bar and the weekly reminder use
+    this, so such a setup does not look protected forever.
+    """
+    if configured_folder is None:
+        return (
+            "Es ist kein Sicherungsordner eingerichtet. Ihre Daten liegen damit nur "
+            "auf der Datenplatte - geht sie verloren oder kaputt, sind alle Daten weg."
+        )
+    if is_on_same_drive(configured_folder, drive_root):
+        return (
+            "Der Sicherungsordner liegt auf der Datenplatte selbst. Geht die Platte "
+            "verloren oder kaputt, sind Daten und Sicherungen zugleich weg."
+        )
+    return None
+
+
 def backup_folder_warning(folder: Path, drive_root: Path) -> str | None:
     """A German warning if folder is a questionable place for backups, else None."""
-    if folder.drive and folder.drive.casefold() == drive_root.drive.casefold():
+    if is_on_same_drive(folder, drive_root):
         return (
             "Dieser Ordner liegt auf der Datenplatte selbst. Geht die Platte "
             "verloren oder kaputt, sind Daten und Sicherungen zugleich weg. Besser "

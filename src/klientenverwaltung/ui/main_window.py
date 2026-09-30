@@ -136,6 +136,8 @@ class MainWindow(QMainWindow):
         drive itself would be lost together with the drive, so it must not
         look like a real backup here."""
         configured = config.get_backup_folder_path()
+        gap = backup.backup_protection_gap(configured, self._database.drive_root)
+        self._backup_status_label.setToolTip(gap or "")
         if configured is None:
             on_drive = backup.most_recent_backup([self._database.drive_root])
             self._backup_status_label.setText(
@@ -146,17 +148,25 @@ class MainWindow(QMainWindow):
             )
             return
         latest = backup.most_recent_backup([configured])
-        self._backup_status_label.setText(
+        text = (
             "Letzte Sicherung: keine vorhanden"
             if latest is None
             else f"Letzte Sicherung: {_format_backup_time(latest)}"
         )
+        # A folder on the data drive itself (set up before the program
+        # warned about that, or despite the warning) is no real backup.
+        self._backup_status_label.setText(
+            text if gap is None else f"{text} (nur auf der Datenplatte)"
+        )
 
     def remind_about_backups_if_due(self) -> None:
-        """At most once a week while no backup folder is set up - backups
-        then only happen right before migrations, and a status-bar line is
-        easy to overlook."""
-        if config.get_backup_folder_path() is not None:
+        """At most once a week while backups would not survive losing the
+        data drive (no folder set up, or one on the data drive itself) - a
+        status-bar line is easy to overlook."""
+        gap = backup.backup_protection_gap(
+            config.get_backup_folder_path(), self._database.drive_root
+        )
+        if gap is None:
             return
         settings = QSettings()
         today = date.today()
@@ -168,7 +178,7 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
         settings.setValue(_BACKUP_REMINDER_SETTINGS_KEY, today.isoformat())
-        if ask_set_up_backup_folder(parent=self):
+        if ask_set_up_backup_folder(gap, parent=self):
             self._on_manage_backups_clicked()
 
     def _open_treatment_type_dialog(self) -> None:
@@ -212,7 +222,10 @@ class MainWindow(QMainWindow):
             show_error(str(exc), parent=self)
             return
         self._update_backup_status_label()
-        if configured is None:
+        if (
+            backup.backup_protection_gap(configured, self._database.drive_root)
+            is not None
+        ):
             show_info(
                 f"Die Sicherung wurde auf der Datenplatte abgelegt:\n{created}\n\n"
                 "Sie schützt damit nicht vor dem Verlust oder Defekt der "

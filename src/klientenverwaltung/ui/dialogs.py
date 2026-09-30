@@ -213,16 +213,15 @@ def ask_confirm_restore(
     return box.clickedButton() is restore_button
 
 
-def ask_set_up_backup_folder(*, parent: QWidget | None = None) -> bool:
-    """The (at most weekly) reminder while no backup folder is set up;
-    True for "Jetzt einrichten…"."""
+def ask_set_up_backup_folder(gap: str, *, parent: QWidget | None = None) -> bool:
+    """The (at most weekly) reminder while backups would not survive losing
+    the data drive; gap is backup.backup_protection_gap()'s sentence. True
+    for "Jetzt einrichten…"."""
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Warning)
-    box.setWindowTitle("Keine Sicherungen eingerichtet")
+    box.setWindowTitle("Sicherungen schützen noch nicht")
     box.setText(
-        "Es ist noch kein Sicherungsordner eingerichtet. Ihre Daten liegen damit "
-        "nur auf der Datenplatte - geht sie verloren oder kaputt, sind alle Daten "
-        "weg.\n\nBitte einen Sicherungsordner auf einem anderen Datenträger "
+        f"{gap}\n\nBitte einen Sicherungsordner auf einem anderen Datenträger "
         "wählen, zum Beispiel auf einer zweiten Festplatte."
     )
     set_up_button = box.addButton(

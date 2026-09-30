@@ -196,7 +196,8 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
   Datenbank ist eine abgebrochene Einrichtung und wird vom Assistenten abgeschlossen.
 - Sicherungen: automatisch beim Start (vor Migrationen immer) und beim Beenden, jeweils nur
   bei Änderungen, in den Sicherungsordner; eine Kopie auf der Datenplatte selbst zählt
-  nicht als Sicherung. Ohne Sicherungsordner erinnert das Programm höchstens wöchentlich.
+  nicht als Sicherung. Ohne Sicherungsordner - oder mit einem Ordner auf der Datenplatte
+  selbst - erinnert das Programm höchstens wöchentlich (`backup.backup_protection_gap`).
   Eine Wiederherstellung prüft die Sicherung vorher und legt eine Sicherheitskopie an
   (in der Liste als "Vor Wiederherstellung" wieder herstellbar).
 - Es läuft immer nur eine Instanz (Sperrdatei in %APPDATA%).
