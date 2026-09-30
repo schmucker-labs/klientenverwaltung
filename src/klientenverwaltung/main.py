@@ -15,7 +15,7 @@ from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QSplashScreen
 from sqlalchemy import Engine
 
-from klientenverwaltung import backup, config, crash_log, storage
+from klientenverwaltung import backup, config, crash_log, self_test, storage
 from klientenverwaltung.app_context import AppServices, OpenDatabase
 from klientenverwaltung.services import (
     DataUnavailableError,
@@ -382,6 +382,11 @@ def _acquire_single_instance_lock(lock_path: Path) -> QLockFile | None:
 
 
 def main() -> int:
+    if "--self-test" in sys.argv:
+        # Checks a build against a throwaway data drive, without the user's
+        # data, settings or any window (see self_test and docs/build.md).
+        return self_test.run()
+
     sys.excepthook = _log_and_show_crash
 
     # Only for QSettings (window geometry, column widths, splitter sizes) -

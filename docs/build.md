@@ -39,3 +39,12 @@ Alembic-Migration hinzukommt.
   Programme ganz blockieren. Vor der Übergabe auf dem Ziel-Laptop prüfen
   (Windows-Sicherheit → App- und Browsersteuerung); dauerhaft hilft nur eine
   Code-Signatur.
+- Nach jedem Build den Selbsttest ausführen: `dist\klientenverwaltung-debug.exe --self-test`
+  (Release-Variante ohne Konsole: nur der Rückgabewert, `echo %ERRORLEVEL%` → 0 = bestanden).
+  Er richtet in einem temporären Ordner eine Wegwerf-Datenplatte ein (alle gebündelten
+  Migrationen), nutzt alle Services, erstellt und prüft eine Sicherung, ändert das Passwort
+  und baut das Hauptfenster auf - ohne Fenster, ohne die Datenplatte, die Einstellungen
+  oder `%APPDATA%` des Anwenders anzufassen (`self_test.py`). Genau die Fehler, die nur im
+  Build auftreten (fehlender Hidden Import in `alembic/env.py` oder einer Migration,
+  fehlendes Icon, fehlendes Qt-Plugin), fallen damit vor der Auslieferung auf. Ersetzt
+  nicht den Start auf einem Rechner ohne Python, verkürzt aber die Fehlersuche.

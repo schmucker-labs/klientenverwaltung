@@ -133,7 +133,15 @@ uv run python scripts/build_exe.py --debug    # Debug-Build (mit Konsole, für F
 ```
 
 Erzeugt `dist/klientenverwaltung.exe` bzw. `dist/klientenverwaltung-debug.exe` als jeweils
-eigenständige Single-File-Executables. Details zu Hidden Imports, Icon-Erzeugung und
+eigenständige Single-File-Executables. Ein eingebauter Selbsttest prüft den Build ohne
+Anwenderdaten gegen eine Wegwerf-Datenplatte (Migrationen, Services, Sicherung,
+Passwortwechsel, Hauptfenster):
+
+```bash
+dist/klientenverwaltung-debug.exe --self-test   # Rückgabewert 0 = bestanden
+```
+
+Details zu Hidden Imports, Icon-Erzeugung und
 PyInstaller-Fallstricken stehen in [`docs/build.md`](docs/build.md) – vor Änderungen an den
 `.spec`-Dateien oder einer neuen Alembic-Migration lesen.
 
