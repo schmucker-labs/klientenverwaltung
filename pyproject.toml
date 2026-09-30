@@ -1,6 +1,6 @@
 [project]
 name = "klientenverwaltung"
-version = "0.6.0"
+version = "0.7.0"
 description = "Klientenverwaltung für eine Einzelpraxis (Klienten, Sitzungen, Berichte, Medien) mit SQLCipher-verschlüsselter Datenbank auf einer externen Datenplatte."
 readme = "README.md"
 authors = [

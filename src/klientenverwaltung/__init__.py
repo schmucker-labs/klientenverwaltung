@@ -1,4 +1,4 @@
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 # The single source for the author's name, used by the about dialog, the
 # splash screen (baked into splash.png by scripts/generate_icons.py - regenerate
