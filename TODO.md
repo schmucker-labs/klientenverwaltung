@@ -27,6 +27,7 @@ und im README verlinken:
 - Auf dem Ziel-Laptop prüfen, ob SmartScreen / die "Intelligente App-Steuerung" die nicht
   signierte `.exe` zulässt (siehe docs/build.md).
 - Wiederherstellung und "Passwort ändern" einmal gemeinsam durchspielen.
+- Notfallblatt (docs/notfallblatt.md) ausdrucken und mit dem Heiler durchgehen.
 
 ## Fragen an den Anwender
 

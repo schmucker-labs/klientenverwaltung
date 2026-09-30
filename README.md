@@ -34,6 +34,10 @@ Schutz von Gesundheitsdaten.
   „Passwort ändern“ (SQLCipher-Rekey) ohne Neustart
 - Hell- und Dunkel-Theme, vollständig per Tastatur bedienbar
 
+Für den Anwender gibt es ein einseitiges [Notfallblatt](docs/notfallblatt.md): was bei
+„Datenplatte nicht gefunden“, einer defekten Platte oder einem versehentlich gelöschten
+Eintrag zu tun ist.
+
 ## Screenshots
 
 *(Platzhalter – Bilder folgen)*

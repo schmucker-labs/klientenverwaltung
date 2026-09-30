@@ -4,6 +4,10 @@
 > Stand: Commit `820aeff` (Branch `master`) zuzüglich der nicht committeten Änderung in
 > `src/klientenverwaltung/ui/client_sessions_dialog.py` (Beispieltext „Meditation" statt
 > „Chakrenausgleich"), 29.09.2026.
+>
+> **Nachtrag 30.09.2026:** Die Befunde sind inzwischen umgesetzt. Der Text unten beschreibt
+> unverändert den Stand *vor* der Umsetzung (Zeilenangaben gelten für `820aeff`); was daraus
+> wurde, steht im Abschnitt [Umsetzungsstand](#umsetzungsstand-30092026) am Ende.
 
 ### Grundlage und Methodik
 
@@ -978,6 +982,12 @@ die Datenbank löschen könnte.
 4 Plan-Dokumente umformatieren. Aktiv ist nur der Ruff-Standardregelsatz (E4/E7/E9/F);
 `ignore = ["DTZ"]` ist wirkungslos, weil DTZ nicht ausgewählt ist. „Typ-Hinweise überall"
 (CLAUDE.md) prüft kein Werkzeug, obwohl `# type: ignore[...]`-Kommentare auf eine Typprüfung hindeuten.
+
+> **Korrektur (30.09.2026, bei der Umsetzung festgestellt):** Die Aussage zum Regelsatz war
+> falsch. Das verwendete ruff 0.16 aktiviert von sich aus einen großen Standardregelsatz (rund
+> 400 Regeln, u. a. `I001`, `UP047`, `FLY002`, `PIE810` – sie schlugen bei neuem Code an), und
+> `ignore = ["DTZ"]` ist damit wirksam und nötig (naive lokale Zeitstempel sind hier gewollt). Vom
+> Befund bleibt nur die nicht erzwungene Formatierung; ein erweitertes `select` ist überflüssig.
 **Warum es wichtig ist:** Stilabweichungen und Typfehler werden nicht automatisch gefunden.
 **Beleg:** Lokale `ruff`-Läufe (siehe Methodik).
 **Empfohlene Änderung:** `ruff format` einmalig in einem eigenen Commit anwenden; `select` um
@@ -1392,102 +1402,125 @@ Reihenfolge nach Risiko und Abhängigkeiten. Wichtige Abhängigkeiten:
 **H-1 vor M-7** (Rekey braucht einheitliche Schlüsselbehandlung) und **H-3 vor jeder Migration**
 (auch den Migrationen aus H-4 und L-13).
 
+> **Stand 30.09.2026:** `[x]` = umgesetzt, `[ ]` = offen oder nur teilweise umgesetzt. Abweichungen
+> vom ursprünglichen Vorschlag stehen kursiv hinter dem Punkt; Commits und offene Entscheidungen
+> im Abschnitt [Umsetzungsstand](#umsetzungsstand-30092026).
+
 ## Phase 1 — Critical / Security
 
-- [ ] **H-1 – Passwort sicher an SQLCipher übergeben:** In `storage.create_encrypted_engine`
+- [x] **H-1 – Passwort sicher an SQLCipher übergeben:** In `storage.create_encrypted_engine`
   `URL.create("sqlite+pysqlcipher", password=…, database=…)` statt f-String-URL verwenden.
   Test: Einrichtung + Login mit `@`, `%41`, `"`, `:`, `/`, `?`, `#`, Umlauten.
-- [ ] **H-2 – Keine Parameter in Ausnahmen/Logs:** `hide_parameters=True` in
+- [x] **H-2 – Keine Parameter in Ausnahmen/Logs:** `hide_parameters=True` in
   `create_encrypted_engine`; `_log_and_show_crash` loggt keine Meldungstexte von
   `sqlalchemy.exc.*` (auch verkettet). Test mit einer `StatementError` und Parameterwert.
-- [ ] **H-3 – Migrationen ohne Fremdschlüssel-Kaskade:** In `alembic/env.py` vor den Migrationen
+- [x] **H-3 – Migrationen ohne Fremdschlüssel-Kaskade:** In `alembic/env.py` vor den Migrationen
   `PRAGMA foreign_keys=OFF`, danach `PRAGMA foreign_key_check` (leer, sonst `StorageError`) und
   `PRAGMA foreign_keys=ON`. Test: befüllte DB, Test-Migration mit `recreate="always"` für `client`
   und `session`, Zeilenzahlen unverändert. Warnung in `docs/build.md`.
-- [ ] **M-1 – Einrichtung atomar machen:** In `set_up_data_drive` zuerst DB anlegen/migrieren,
+- [x] **M-1 – Einrichtung atomar machen:** In `set_up_data_drive` zuerst DB anlegen/migrieren,
   zuletzt Kennungsdatei schreiben; Aufräumen bei jeder Ausnahme; `SetupWizard` fängt `Exception`
   mit verständlicher Meldung; beim Start „Kennungsdatei ohne DB" erkennen und Einrichtung anbieten.
 
 ## Phase 2 — High Priority
 
-- [ ] **H-4 – Termine auf Minuten normalisieren:** `date.replace(second=0, microsecond=0)` in
+- [x] **H-4 – Termine auf Minuten normalisieren:** `date.replace(second=0, microsecond=0)` in
   `create_session`/`update_session`; Startwert im `SessionDialog` auf volle (Viertel-)Stunde;
   Datenmigration für Bestandsdaten (nach H-3). Test mit „krummen" Sekunden.
-- [ ] **M-2 – Historische Behandlungsart beim Bearbeiten zulassen:** Aktiv-Prüfung in
+- [x] **M-2 – Historische Behandlungsart beim Bearbeiten zulassen:** Aktiv-Prüfung in
   `update_session` nur bei geänderter `treatment_type_id`. Zwei Tests.
-- [ ] **M-3 – Suche reparieren:** Begriffe an Leerzeichen trennen (UND über Begriffe, ODER über
+- [x] **M-3 – Suche reparieren:** Begriffe an Leerzeichen trennen (UND über Begriffe, ODER über
   Spalten), Unicode-sicherer Vergleich (`casefold` im Service o. Ä.), Platzhalter escapen; gleiches
   Muster für `list_unlinked_for_session`. Tests mit Umlauten und Vor-/Nachname.
-- [ ] **M-4 – Fehlergrenze schließen:** Lese-Wrapper in `services/` (`SQLAlchemyError` →
+- [x] **M-4 – Fehlergrenze schließen:** Lese-Wrapper in `services/` (`SQLAlchemyError` →
   `ServiceError`); `DataUnavailableError` für getrennte Platte; zentraler UI-Helfer
   `call_service(...)` und Einsatz an allen Lese-Aufrufstellen (Liste in M-4).
-- [ ] **M-5 – Laufwerkssuche wirklich begrenzen:** Daemon-Threads mit Deadline statt
+  *Anders gelöst: statt eines UI-Helfers an jeder Aufrufstelle übersetzt jede öffentliche
+  Service-Methode selbst (`database_errors_as`), und ein nirgends abgefangener `ServiceError`
+  erscheint zentral als normale Meldung – das Programm läuft weiter.*
+- [x] **M-5 – Laufwerkssuche wirklich begrenzen:** Daemon-Threads mit Deadline statt
   `with ThreadPoolExecutor`; Netz-/CD-Laufwerke überspringen; Test mit Zeitschranke; Assistent
   (`describe_drive`, `drive_already_set_up`) ebenso absichern.
-- [ ] **M-6 – Wiederherstellung sicher und umkehrbar:** Sicherungen aus `vor-wiederherstellung`
+  *Netz-/CD-Laufwerke werden nicht übersprungen: Mit der echten Zeitschranke kosten sie höchstens
+  die gemeinsame Frist, und eine Datenplatte auf einem ungewöhnlichen Laufwerkstyp bleibt auffindbar.*
+- [x] **M-6 – Wiederherstellung sicher und umkehrbar:** Sicherungen aus `vor-wiederherstellung`
   im Dialog anzeigen und wiederherstellbar machen; Sicherung vor dem Überschreiben lesend prüfen
   (Schlüssel, `quick_check`, Alembic-Revision); Meldungstext korrigieren.
-- [ ] **M-7 – „Passwort ändern" (nach H-1):** Dialog + `storage.change_password` mit
+- [x] **M-7 – „Passwort ändern" (nach H-1):** Dialog + `storage.change_password` mit
   Pflichtsicherung und `PRAGMA rekey`; Hinweis zu alten Sicherungen; Wiederherstellung fragt ggf.
   das alte Passwort ab.
-- [ ] **M-8 – Einfügen im Berichtseditor bereinigen:** Bilder, Links und Tabellen beim Einfügen
+- [x] **M-8 – Einfügen im Berichtseditor bereinigen:** Bilder, Links und Tabellen beim Einfügen
   und vor dem Speichern entfernen/umwandeln; Test mit Word-typischem HTML.
-- [ ] **M-10 – Sicherungsstrategie:** Sicherung beim Beenden (nur bei Änderungen); Unverändert-Prüfung
+- [x] **M-10 – Sicherungsstrategie:** Sicherung beim Beenden (nur bei Änderungen); Unverändert-Prüfung
   nur gegen den konfigurierten Ordner; wiederkehrender Hinweis ohne Sicherungsordner; Warnung bei
   Ordner auf der Datenplatte.
 
 ## Phase 3 — Architecture / Maintainability
 
-- [ ] **M-12 – DTOs statt ORM-Objekten in der UI:** Beginnend mit `TreatmentSession`, dann
+- [x] **M-12 – DTOs statt ORM-Objekten in der UI:** Beginnend mit `TreatmentSession`, dann
   `Client`, `TreatmentType`, `Media`; danach Architekturtest „`ui/` importiert keine Modelle".
-- [ ] **L-24 – `AppServices`-Dataclass** statt vier einzelner Service-Parameter.
-- [ ] **L-7 – Logging-Konfiguration aus `env.py` entschärfen** (`fileConfig` nur im CLI-Pfad oder
+- [x] **L-24 – `AppServices`-Dataclass** statt vier einzelner Service-Parameter.
+- [x] **L-7 – Logging-Konfiguration aus `env.py` entschärfen** (`fileConfig` nur im CLI-Pfad oder
   `disable_existing_loggers=False`).
-- [ ] **L-8 – DB neuer als Programm** erkennen und verständlich melden; `CommandError` →
+- [x] **L-8 – DB neuer als Programm** erkennen und verständlich melden; `CommandError` →
   `StorageError`.
-- [ ] **L-9 – UUID der Datenplatte merken** und bei Abweichung nachfragen.
-- [ ] **L-10 – Pfadprüfung** in `delete_unknown_file`/`resolve_media_path_for_stored_filename`.
-- [ ] **L-19 – `config.json` atomar schreiben**, beschädigte Datei melden.
-- [ ] **L-20 – Zeitstempel-Konvention** festlegen und dokumentieren.
-- [ ] **L-11 – Werkzeuge:** `ruff format` in eigenem Commit, erweiterter Regelsatz, optional Typprüfer.
-- [ ] **L-12 – Projektmetadaten:** Beschreibung, Version aus einer Quelle.
+- [x] **L-9 – UUID der Datenplatte merken** und bei Abweichung nachfragen.
+- [x] **L-10 – Pfadprüfung** in `delete_unknown_file`/`resolve_media_path_for_stored_filename`.
+- [x] **L-19 – `config.json` atomar schreiben**, beschädigte Datei melden.
+- [x] **L-20 – Zeitstempel-Konvention** festlegen und dokumentieren. *Dokumentiert (CLAUDE.md,
+  „Regeln"); die bestehenden UTC-Spalten wurden bewusst nicht per Migration umgestellt.*
+- [x] **L-11 – Werkzeuge:** `ruff format` in eigenem Commit, erweiterter Regelsatz, optional Typprüfer.
+  *Nur die Formatierung war nötig – der Befund zum Regelsatz war falsch (siehe Korrektur in L-11).
+  Ein Typprüfer wurde nicht eingeführt.*
+- [x] **L-12 – Projektmetadaten:** Beschreibung, Version aus einer Quelle.
 
 ## Phase 4 — UX / UI
 
-- [ ] **M-9 – Theme-Farben in Tabellenmodellen:** `current_palette()` in `theme.py`, genutzt von
+- [x] **M-9 – Theme-Farben in Tabellenmodellen:** `current_palette()` in `theme.py`, genutzt von
   `ClientTableModel` und `TreatmentTypeTableModel`.
-- [ ] **M-13 – Scrollbalken vollständig stylen** (Breite, Griff-Mindestgröße, `add-page`/`sub-page`,
+- [x] **M-13 – Scrollbalken vollständig stylen** (Breite, Griff-Mindestgröße, `add-page`/`sub-page`,
   `add-line`/`sub-line`, Hover/Pressed); auf 1366×768 und bei 125 %/150 % prüfen.
-- [ ] **L-1 – Text im Einrichtungsassistenten** korrigieren.
-- [ ] **L-2 – Umlaute/ß** in den Meldungen aus `storage.py`.
-- [ ] **L-3 – Standard-Sortierung** Nachname aufsteigend, deutsche Kollation (`QCollator`).
-- [ ] **L-4 – Formular nach dem Speichern** mit normalisierten Werten neu befüllen.
-- [ ] **L-5 – Tastatur/Fokus:** eigene Fokusdarstellung, Strg+S/Strg+Enter in allen
+  *Gestylt und per Offscreen-Rendering in beiden Themes geprüft; die Kontrolle bei 125 %/150 %
+  Skalierung auf dem echten Bildschirm steht noch aus.*
+- [x] **L-1 – Text im Einrichtungsassistenten** korrigieren.
+- [x] **L-2 – Umlaute/ß** in den Meldungen aus `storage.py`.
+- [x] **L-3 – Standard-Sortierung** Nachname aufsteigend, deutsche Kollation (`QCollator`).
+- [x] **L-4 – Formular nach dem Speichern** mit normalisierten Werten neu befüllen.
+- [x] **L-5 – Tastatur/Fokus:** eigene Fokusdarstellung, Strg+S/Strg+Enter in allen
   Formularen mit mehrzeiligen Feldern, Doppelklick/Enter einheitlich.
-- [ ] **L-6 – „Jetzt sichern"** mit Rückmeldung, korrekte Statusleiste.
-- [ ] **L-14 – Lange Dateilisten** in Meldungen kürzen; Löschbestätigung mit Anzahl/Größe.
-- [ ] **L-15 – Auswahl nach Neuladen** erhalten; neuen Klienten markieren.
-- [ ] **L-16 – Datumseingabe** vereinfachen, Plausibilitätsprüfungen im Service.
-- [ ] **L-23 – Startdialoge vor den Splash holen** (erst in der `.exe` prüfen).
-- [ ] **L-25 – Behandlungsarten:** Namensvergleich per `casefold`, Löschen-Button bei Verwendung deaktivieren.
+- [x] **L-6 – „Jetzt sichern"** mit Rückmeldung, korrekte Statusleiste.
+- [x] **L-14 – Lange Dateilisten** in Meldungen kürzen; Löschbestätigung mit Anzahl/Größe.
+- [x] **L-15 – Auswahl nach Neuladen** erhalten; neuen Klienten markieren.
+- [x] **L-16 – Datumseingabe** vereinfachen, Plausibilitätsprüfungen im Service.
+- [x] **L-23 – Startdialoge vor den Splash holen** (erst in der `.exe` prüfen). *Alle Startdialoge
+  und der Assistent werden jetzt wie die Passwortabfrage nach vorn geholt; ob der Splash in der
+  gebauten `.exe` wirklich nie davor liegt, kann nur ein Mensch am Bildschirm bestätigen.*
+- [x] **L-25 – Behandlungsarten:** Namensvergleich per `casefold`, Löschen-Button bei Verwendung deaktivieren.
 
 ## Phase 5 — Testing
 
-- [ ] **M-11 – Test „Migrationen = Modelle"** per `alembic.autogenerate.compare_metadata`.
-- [ ] **M-11 – Migrationstest mit Daten** (deckt H-3 dauerhaft ab).
-- [ ] **M-11 – `_run_startup_backup`-Entscheidungsmatrix** testen.
+- [x] **M-11 – Test „Migrationen = Modelle"** per `alembic.autogenerate.compare_metadata`.
+- [x] **M-11 – Migrationstest mit Daten** (deckt H-3 dauerhaft ab).
+- [x] **M-11 – `_run_startup_backup`-Entscheidungsmatrix** testen.
 - [ ] **M-11 – Dirty-Check/Speichern** für `ClientDetailDialog` und `SessionDialog`.
-- [ ] **Regressionstests zu den Befunden** H-1, H-2, H-4, M-2, M-3, M-5 (Zeitschranke), M-8, L-21.
+  *Teilweise: `tests/test_client_detail_dialog.py` deckt den Klientendialog ab; für den
+  `SessionDialog` gibt es keinen eigenen Dialogtest (seine Regeln sind im Service getestet).*
+- [x] **Regressionstests zu den Befunden** H-1, H-2, H-4, M-2, M-3, M-5 (Zeitschranke), M-8, L-21.
 - [ ] Optional: `QT_QPA_PLATFORM=offscreen` in `conftest.py`, `QSettings` in allen Dialogtests isolieren.
+  *Teilweise: Fixture `isolated_qsettings` vorhanden (genutzt in
+  `tests/test_client_list_widget.py`), aber nicht in allen Dialogtests; die Plattform wird
+  weiterhin von außen gesetzt.*
 
 ## Phase 6 — Cleanup / Nice-to-have
 
-- [ ] **L-13 – Skalierung:** Untergrenze für `find_overlapping`, Indizes per Migration (nach H-3),
+- [x] **L-13 – Skalierung:** Untergrenze für `find_overlapping`, Indizes per Migration (nach H-3),
   Count-Abfragen, Dateigröße im `BackupEntry` zwischenspeichern.
-- [ ] **L-17 – Einzelinstanz-Sperre** (`QLockFile`).
+- [x] **L-17 – Einzelinstanz-Sperre** (`QLockFile`).
 - [ ] **L-18 – Auslieferung:** `upx=False`, App-Steuerung auf dem Ziel-Laptop prüfen, Signatur erwägen.
-- [ ] **L-21 – Suffix `_2`** beim Parsen des Sicherungszeitstempels berücksichtigen.
-- [ ] **L-22 – Dokumentation aktualisieren** (Projektkontext, TODO, README-Abschnitt „Medien",
+  *Teilweise: `upx=False` gesetzt und in `docs/build.md` begründet. Offen: Prüfung auf dem
+  Ziel-Laptop und die Entscheidung über eine Code-Signatur (braucht ein Zertifikat).*
+- [x] **L-21 – Suffix `_2`** beim Parsen des Sicherungszeitstempels berücksichtigen.
+- [x] **L-22 – Dokumentation aktualisieren** (Projektkontext, TODO, README-Abschnitt „Medien",
   Notfallblatt für den Anwender).
 
 ---
@@ -1504,3 +1537,98 @@ Reihenfolge nach Risiko und Abhängigkeiten. Wichtige Abhängigkeiten:
    dringlich.
 5. **Fügt der Anwender Berichte aus Word ein?** Bestimmt die Dringlichkeit von M-8.
 6. **Wie realistisch ist die Web-API?** Bestimmt die Priorität von M-12 und L-10.
+
+---
+
+## Umsetzungsstand (30.09.2026)
+
+Alle 42 Befunde wurden bearbeitet, je Befund (oder eng zusammengehöriger Gruppe) ein Commit auf
+`master`, in der Reihenfolge der Roadmap.
+
+**Nachweise am Ende der Umsetzung:**
+
+- `pytest` → **354 Tests grün** (vorher 198); `ruff check` und `ruff format --check` fehlerfrei.
+- Beide Builds (`klientenverwaltung.exe`, `klientenverwaltung-debug.exe`) neu gebaut; der neue
+  Selbsttest `--self-test` läuft in beiden gebauten Programmen fehlerfrei durch (Einrichtung mit
+  allen Migrationen, Services, Sicherung, Passwortwechsel, Aufbau des Hauptfensters – gegen eine
+  Wegwerf-Datenplatte im Temp-Ordner, ohne Anwenderdaten).
+- Der Weg „Datenplatte verloren → neue Platte einrichten → alte Sicherung mit damaligem Passwort
+  wiederherstellen" wurde einmal vollständig durchgespielt (Skript gegen Wegwerf-Ordner).
+
+### Commits
+
+| Commit | Befunde | Inhalt |
+|---|---|---|
+| `4c797f2` | H-1, H-2 | Passwort per `URL.create`, `hide_parameters=True` |
+| `917313c` | H-2 | `error.log` ohne Meldungstexte (`crash_log.py`) |
+| `09ee679` | H-3 | Migrationen mit abgeschalteten Fremdschlüsseln, danach `foreign_key_check` |
+| `eb381a4` | H-4, M-2 | Termine minutengenau (inkl. Datenmigration); deaktivierte Art bleibt bearbeitbar |
+| `280b27a` | M-1, L-1 | Einrichtung atomar, abgebrochene Einrichtung wird abgeschlossen |
+| `b159067` | M-3 | Suche Unicode-sicher, mehrere Begriffe (`services/search.py`) |
+| `ea05df4` | M-4 | Fehlergrenze der Services geschlossen, `DataUnavailableError` |
+| `d0783b6` | M-5 | Laufwerkssuche mit echter Zeitschranke |
+| `f204501` | M-6, L-8, L-21 | Wiederherstellung geprüft und umkehrbar; neuere DB wird verständlich gemeldet |
+| `d9d81e0` | L-24 | `AppServices`/`OpenDatabase` (`app_context.py`) |
+| `a14cc55` | M-7 | „Passwort ändern" (Rekey, vorher Sicherung) |
+| `ece2e9e` | M-8 | Einfügen im Berichtseditor bereinigt |
+| `9a9c7b9` | M-10, L-6 | Sicherung beim Beenden, nur externe Sicherungen zählen, Warnungen |
+| `96ade5a` | M-9, M-13, L-4, L-5 | Theme-Farben in Tabellen, Scrollbalken, Fokus, Tastatur |
+| `ada6893` | M-12 | Services liefern DTOs, Architekturtest |
+| `e6292ff` | L-7, L-2 | Logging-Konfiguration nur für die Alembic-CLI; Umlaute in Meldungen |
+| `2fecdf4` | L-25 | Behandlungsarten ohne Beachtung der Groß-/Kleinschreibung eindeutig |
+| `03765f0` | L-16 | Datumseingabe, keine Geburts-/Einwilligungsdaten in der Zukunft |
+| `c235fa0` | L-13 | Überschneidungsabfrage begrenzt, Indizes, Zählabfragen |
+| `7c21fbf` | L-10 | Pfadprüfung für Mediendateinamen |
+| `489be74` | L-19 | `config.json` atomar, tolerant gegen unbrauchbaren Inhalt |
+| `8d6c396` | L-9 | UUID der Datenplatte wird gemerkt und verglichen |
+| `d20b07d` | L-3, L-15 | Deutsche Sortierung, Auswahl bleibt erhalten |
+| `97f92e7` | L-14 | Kurze Dateilisten in Meldungen |
+| `84d33f7` | L-17 | Nur eine laufende Instanz |
+| `b920e17` | L-23 | Startdialoge und Assistent vor den Splash |
+| `f04c6fb` | L-18, L-12 | Kein UPX, Projektbeschreibung, Versionsprüfung |
+| `ded174c` | L-20, L-22 | Dokumentation auf Ist-Stand |
+| `a712f99` | L-11 | `ruff format` auf den gesamten Code |
+| `2258d74` | – | Nacharbeiten aus der Selbstdurchsicht (u. a. Meldung nach fehlgeschlagenem Rekey) |
+| `fb1b396` | – | Fehlende Datenbankdatei wird bei einer Neuverbindung nie leer neu angelegt |
+| `d8ae83b` | – | `--self-test` zum Prüfen eines Builds ohne Anwenderdaten |
+| `beefa80` | M-10 | Bereits eingerichteter Sicherungsordner auf der Datenplatte wird angezeigt |
+
+M-11 (Testlücken) hat keinen eigenen Commit: Die Tests entstanden jeweils mit dem zugehörigen
+Befund (`tests/test_migrations.py`, `test_startup_backup.py`, `test_client_detail_dialog.py`,
+`test_service_error_boundary.py`, `test_architecture.py` u. a.). Das Notfallblatt für den Anwender
+(`docs/notfallblatt.md`) kam zusammen mit diesem Abschnitt hinzu.
+
+### Bewusst anders oder nicht umgesetzt
+
+- **H-1, keine Übergangslösung für `%XX`-Passwörter:** Eine Datenbank oder Sicherung, die *vor*
+  `4c797f2` mit einem Passwort angelegt wurde, das `%` gefolgt von zwei Hex-Ziffern enthält (z. B.
+  `%41`), ist mit der dekodierten Form verschlüsselt (`A` statt `%41`). Sie meldet jetzt „Falsches
+  Passwort" und lässt sich mit der dekodierten Schreibweise öffnen; danach „Passwort ändern". Da
+  das Programm noch nicht übergeben ist (nur Testdaten), wurde dafür kein Sonderweg eingebaut.
+- **M-4:** Übersetzung im Service statt eines UI-Helfers `call_service` (siehe Roadmap).
+- **M-5:** Netz-/CD-Laufwerke werden mitgeprüft, aber durch die Zeitschranke begrenzt.
+- **L-11:** nur Formatierung; der Befund zum Regelsatz war falsch (Korrektur im Befund). Kein Typprüfer.
+- **L-18:** keine Code-Signatur (braucht ein Zertifikat).
+- **L-20:** Konvention dokumentiert, keine Umstellung der bestehenden UTC-Spalten.
+- **Präferenzen aus dem Review** (nicht gezählt): das Idiom `with transaction(): pass` und eine
+  gemeinsame Basisklasse der Tabellenmodelle blieben unverändert.
+- **M-11:** kein eigener Dialogtest für den `SessionDialog`.
+
+### Nur von Hand prüfbar (steht noch aus)
+
+- Startdialoge vor dem Splash in der gebauten `.exe` (L-23).
+- Darstellung bei 125 %/150 % Skalierung und auf 1366×768 (M-13).
+- SmartScreen / Intelligente App-Steuerung auf dem Ziel-Laptop (L-18).
+- Abziehen der echten USB-Platte im laufenden Programm (M-4; bisher nur simuliert).
+
+### Offen – Entscheidung mit dem Anwender nötig
+
+Bewusst nicht gebaut (Arbeitsweise laut `docs/projekt-kontext.md`: neue Funktionen erst nach
+Rücksprache); siehe `TODO.md`:
+
+- Verschlüsselung der Mediendateien (BitLocker To Go / VeraCrypt / eigene Verschlüsselung) –
+  vor dem Speichern echter Aufnahmen klären.
+- Mediendateien in die Sicherungen einbeziehen.
+- Export je Klient für Auskunftsersuchen nach DSGVO Art. 15/20.
+- Optionale automatische Sperre nach Inaktivität.
+- Code-Signatur der `.exe`.
