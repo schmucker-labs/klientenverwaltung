@@ -97,7 +97,8 @@ gesichert.
 - Behandlungsarten pflegen, deaktivieren statt löschen; keine Standard-Arten beim
   Einrichten (Auftrag D1)
 - Einrichtungsassistent beim ersten Start (Platte, Passwort, Sicherungsordner)
-- Light- und Dark-Theme in warmen Tönen, umschaltbar über Statusleiste und Menü
+- Drei Themes - Hell und Dämmerung in warmen Tönen, Dunkel in neutralem Graphit -,
+  umschaltbar über Statusleiste und Menü
 - Logo, Splash Screen, Über-Dialog mit Version
 - Auslieferung als eigenständige .exe plus Debug-Variante mit Konsole
 

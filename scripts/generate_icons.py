@@ -131,6 +131,11 @@ def main() -> None:
         size=QSize(_MONOCHROME_ICON_BASE_SIZE, _MONOCHROME_ICON_BASE_SIZE),
     )
     _generate_png(
+        "dawn",
+        "dawn.png",
+        size=QSize(_MONOCHROME_ICON_BASE_SIZE, _MONOCHROME_ICON_BASE_SIZE),
+    )
+    _generate_png(
         "moon",
         "moon.png",
         size=QSize(_MONOCHROME_ICON_BASE_SIZE, _MONOCHROME_ICON_BASE_SIZE),

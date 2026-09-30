@@ -15,7 +15,7 @@ from klientenverwaltung.ui.backup_table_model import BackupTableModel
 from klientenverwaltung.ui.client_table_model import ClientTableModel
 from klientenverwaltung.ui.media_table_model import MediaTableModel
 from klientenverwaltung.ui.session_table_model import DATE_COLUMN, SessionTableModel
-from klientenverwaltung.ui.theme import DARK_PALETTE, ThemeMode, apply_theme_mode
+from klientenverwaltung.ui.theme import DAWN_PALETTE, ThemeMode, apply_theme_mode
 from klientenverwaltung.ui.treatment_type_table_model import TreatmentTypeTableModel
 
 
@@ -46,7 +46,7 @@ def test_header_data_out_of_range_section_returns_none(
 
 @pytest.fixture
 def dark_theme(qapp: QApplication) -> Iterator[None]:
-    apply_theme_mode(ThemeMode.DARK)
+    apply_theme_mode(ThemeMode.DAWN)
     yield
     apply_theme_mode(ThemeMode.LIGHT)
 
@@ -73,7 +73,7 @@ def test_archived_clients_use_the_active_themes_color(dark_theme: None) -> None:
 
     color = model.data(model.index(0, 1), Qt.ItemDataRole.ForegroundRole)
 
-    assert color == QColor(DARK_PALETTE.text_archived)
+    assert color == QColor(DAWN_PALETTE.text_archived)
 
 
 def test_inactive_treatment_types_use_the_active_themes_color(
@@ -86,7 +86,7 @@ def test_inactive_treatment_types_use_the_active_themes_color(
 
     color = model.data(model.index(0, 0), Qt.ItemDataRole.ForegroundRole)
 
-    assert color == QColor(DARK_PALETTE.text_archived)
+    assert color == QColor(DAWN_PALETTE.text_archived)
 
 
 def _entry(entry_id: int, last_name: str) -> ClientListEntry:

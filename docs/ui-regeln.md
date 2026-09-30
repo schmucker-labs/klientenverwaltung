@@ -101,7 +101,7 @@ oder eine Tabelle mit Spalten hinzukommt.
   Fläche unter den Zeilen.
 - Umschalt-Buttons (checkable QPushButton) zeigen ihren aktiven Zustand ausschließlich
   über `:checked` mit der Akzentfarbe des Themes und kontrastreicher Schrift, deutlich
-  vom inaktiven Zustand unterscheidbar in Light UND Dark - dazu `:checked:hover`,
+  vom inaktiven Zustand unterscheidbar in jedem Theme - dazu `:checked:hover`,
   `:checked:pressed` und `:checked:disabled` ebenso definieren wie die unmarkierten
   Zustände (siehe Regel oben zu vollständig ersetztem nativem Stil). Wird der Zustand
   programmatisch aktualisiert (z. B. nach einer Cursor-Bewegung), dabei die Signale
@@ -111,13 +111,32 @@ oder eine Tabelle mit Spalten hinzukommt.
   Farbvariablen des aktiven Themes. Jedes Theme definiert vollständig: Hintergrund,
   Flächen, Text, Sekundärtext, Akzent, Sekundärakzent, Linien, Hover, markierte Zeile
   (Hintergrund + Text), Fehler-/Warnfarbe, deaktivierte Elemente, Fokusrahmen,
-  archivierte Einträge. Stylesheets setzen nur Farben, nie Abstände oder Schriftgrößen.
+  archivierte Einträge, schwebende Flächen (Menüs, Auswahllisten, Tooltips: Fläche +
+  Rand). Stylesheets setzen nur Farben, nie Abstände oder Schriftgrößen.
+- Es gibt drei Themes (`ThemeMode` in `ui/theme.py`): "Hell", "Dämmerung" (warmes
+  Dunkel) und "Dunkel" (neutrales Graphit, Flächen nach Helligkeit geschichtet: je
+  heller, desto weiter oben). Ein weiteres Theme ist eine weitere `ColorPalette` plus
+  je ein Eintrag in `THEME_MODE_LABELS`, `_PALETTES` und `_COLOR_SCHEMES` sowie ein
+  Icon für den Umschalter - kein Fenstercode fragt "hell oder dunkel?". Der früher
+  gespeicherte Wert `dark` wird als "Dämmerung" geladen.
+- Das Theme wird unten rechts in der Statusleiste umgeschaltet (`ThemeSwitcher` in
+  `ui/theme_switcher.py`): ein Button je Theme in einer gemeinsamen Fläche, das aktive
+  mit der Akzentfarbe gefüllt, ein Klick schaltet direkt um - kein einzelner Button,
+  der die Themes der Reihe nach durchschaltet. Dieselbe Auswahl steht im Menü
+  "Einstellungen → Darstellung".
+- Menüs sind in jedem Theme gleich geformt: abgerundet (8 px), Einträge mit
+  abgerundeter Hover-Fläche, Trennlinie in der Randfarbe der schwebenden Fläche.
+  Keine Transparenz und kein Weichzeichnen dahinter - Qt-Stylesheets können das nicht,
+  und ohne Weichzeichnen wird Menütext über einer Tabelle unleserlich. Die
+  abgerundeten Ecken zeichnet der Windows-11-Stil von Qt (Standard, nicht umstellen).
 - Qt-Stylesheets ersetzen den nativen Windows-Stil eines Elements vollständig, sobald
   sie es anfassen: Innenabstände, Rundungen und Zustandsdarstellung gehen verloren und
   müssen ausdrücklich mitgesetzt werden. Für jedes gestylte Element daher auch
   border-radius, padding, min-height sowie die Zustände hover, pressed, focus und
   disabled definieren.
-- Fenster-Titelleisten werden nicht angepasst (Windows-Systemelement).
+- Fenster-Titelleisten zeichnet Windows; angepasst wird nur hell oder dunkel, passend
+  zum Theme (`setColorScheme` in `apply_theme_mode`) - unabhängig davon, ob Windows
+  selbst hell oder dunkel eingestellt ist.
 - Ein Theme-Wechsel muss zur Laufzeit auf alle offenen Fenster und Dialoge wirken,
   nicht nur auf das Hauptfenster, und ohne Neustart greifen.
 - Stylesheets, die QMenu oder QSplitter anfassen, setzen deren native Darstellung

@@ -67,11 +67,12 @@ class _SelfTest:
             self._database.close()
 
     def _load_ui_resources(self) -> None:
-        apply_theme_mode(ThemeMode.DARK)
-        apply_theme_mode(ThemeMode.LIGHT)
+        # Light last: the main window is built in it further down.
+        for mode in reversed(ThemeMode):
+            apply_theme_mode(mode)
         if get_app_icon().isNull():
             raise RuntimeError("app.ico fehlt im Build")
-        for name in ("logo", "splash", "sun", "moon", "plus"):
+        for name in ("logo", "splash", "sun", "dawn", "moon", "plus"):
             if load_pixmap(name).isNull():
                 raise RuntimeError(f"Icon fehlt im Build: {name}.png")
 

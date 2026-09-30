@@ -1,4 +1,4 @@
-"""Central color definitions and light/dark mode switching for the app.
+"""Central color definitions and theme switching for the app.
 
 Every color used anywhere in the UI must be a named field on ColorPalette,
 set here and nowhere else. UI code builds a style sheet from a palette via
@@ -15,7 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QSettings, Qt
-from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygon
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPixmap, QPolygon
 from PySide6.QtWidgets import QApplication, QSpinBox
 
 # QCheckBox::indicator loses Qt's native checkmark glyph as soon as any of
@@ -130,6 +130,12 @@ class ColorPalette:
     error: str
     # Focus ring around the currently focused input.
     focus: str
+    # What floats above a window: menus, combo box lists, tooltips. In a
+    # theme that layers its surfaces by brightness this is the topmost one.
+    surface_floating: str
+    # The edge of a floating surface - where that surface is lifted, a
+    # hairline lighter than `lines`, so it stands out from what is below.
+    lines_floating: str
 
 
 LIGHT_PALETTE = ColorPalette(
@@ -165,9 +171,13 @@ LIGHT_PALETTE = ColorPalette(
     # the standard pattern, so it gets its own name here rather than being
     # written as `accent` at every call site.
     focus="#A7654F",
+    surface_floating="#FFFFFF",
+    lines_floating="#DDD5CA",
 )
 
-DARK_PALETTE = ColorPalette(
+# The warm dark theme ("Dämmerung") - the only dark theme until the graphite
+# one was added, and called "dark" back then (see load_theme_mode).
+DAWN_PALETTE = ColorPalette(
     background="#211C18",
     surface_toolbar="#29231E",
     surface_panel="#302923",
@@ -190,24 +200,79 @@ DARK_PALETTE = ColorPalette(
     # against the dark background.
     error="#E5534A",
     focus="#B86D50",
+    surface_floating="#302923",
+    lines_floating="#453B33",
+)
+
+# The neutral dark theme ("Dunkel"): near-black, slightly cool grays layered
+# by brightness (the lighter a surface, the higher it sits), with Dämmerung's
+# accent - on gray it needs no brightening, its contrast is higher here.
+GRAPHITE_PALETTE = ColorPalette(
+    background="#16171A",
+    surface_toolbar="#1A1B1F",
+    surface_panel="#1C1D21",
+    surface_input="#121316",
+    hover="#2A2C32",
+    text="#E6E7E9",
+    text_secondary="#9BA1A9",
+    text_disabled="#5C6068",
+    text_archived="#9BA1A9",
+    lines="#2E3036",
+    accent="#B86D50",
+    accent_secondary="#B99A68",
+    # A dark tint of accent over the panel, as in Dämmerung.
+    selection_background="#47332D",
+    selection_text="#E6E7E9",
+    error="#E5534A",
+    focus="#B86D50",
+    surface_floating="#212226",
+    lines_floating="#3A3D44",
 )
 
 
 class ThemeMode(StrEnum):
     LIGHT = "light"
-    DARK = "dark"
+    DAWN = "dawn"
+    GRAPHITE = "graphite"
 
+
+# What the user sees for each theme: menu entries and tooltips.
+THEME_MODE_LABELS = {
+    ThemeMode.LIGHT: "Hell",
+    ThemeMode.DAWN: "Dämmerung",
+    ThemeMode.GRAPHITE: "Dunkel",
+}
+
+_PALETTES = {
+    ThemeMode.LIGHT: LIGHT_PALETTE,
+    ThemeMode.DAWN: DAWN_PALETTE,
+    ThemeMode.GRAPHITE: GRAPHITE_PALETTE,
+}
+
+# Light or dark window title bars - the one part of a window Windows draws.
+_COLOR_SCHEMES = {
+    ThemeMode.LIGHT: Qt.ColorScheme.Light,
+    ThemeMode.DAWN: Qt.ColorScheme.Dark,
+    ThemeMode.GRAPHITE: Qt.ColorScheme.Dark,
+}
 
 _THEME_MODE_SETTINGS_KEY = "appearance/theme_mode"
+# Saved by versions with only two themes, where "dark" was today's Dämmerung.
+_LEGACY_DARK_VALUE = "dark"
 
 
 def get_palette(mode: ThemeMode) -> ColorPalette:
-    return LIGHT_PALETTE if mode is ThemeMode.LIGHT else DARK_PALETTE
+    return _PALETTES[mode]
 
 
 def load_theme_mode() -> ThemeMode:
     value = QSettings().value(_THEME_MODE_SETTINGS_KEY)
-    return ThemeMode.DARK if value == ThemeMode.DARK.value else ThemeMode.LIGHT
+    if value == _LEGACY_DARK_VALUE:
+        return ThemeMode.DAWN
+    try:
+        return ThemeMode(value)
+    except ValueError:
+        return ThemeMode.LIGHT
 
 
 def save_theme_mode(mode: ThemeMode) -> None:
@@ -231,11 +296,15 @@ def apply_theme_mode(mode: ThemeMode) -> None:
     Set on QApplication rather than on any one window, so every currently
     open window and dialog re-polishes with the new colors immediately -
     no restart, and no per-window wiring needed as new dialogs are added.
+    The title bars follow via Qt's color scheme: a dark theme under a
+    white title bar (or the reverse, with Windows itself set to dark)
+    would not look like one window.
     """
     global _current_mode
     _current_mode = mode
     app = QApplication.instance()
     if isinstance(app, QApplication):
+        QGuiApplication.styleHints().setColorScheme(_COLOR_SCHEMES[mode])
         app.setStyleSheet(build_stylesheet(get_palette(mode)))
 
 
@@ -259,13 +328,15 @@ def build_stylesheet(palette: ColorPalette) -> str:
             background-color: {p.hover};
         }}
         QMenu {{
-            background-color: {p.surface_panel};
+            background-color: {p.surface_floating};
             color: {p.text};
-            border: 1px solid {p.lines};
+            border: 1px solid {p.lines_floating};
+            border-radius: 8px;
             padding: 4px;
         }}
         QMenu::item {{
             padding: 6px 20px;
+            border-radius: 4px;
         }}
         QMenu::item:selected {{
             background-color: {p.hover};
@@ -273,11 +344,31 @@ def build_stylesheet(palette: ColorPalette) -> str:
         QMenu::item:disabled {{
             color: {p.text_disabled};
         }}
+        QMenu::separator {{
+            height: 1px;
+            background-color: {p.lines_floating};
+            margin: 4px 8px;
+        }}
+        QToolTip {{
+            background-color: {p.surface_floating};
+            color: {p.text};
+            border: 1px solid {p.lines_floating};
+            padding: 4px 6px;
+        }}
 
         QStatusBar {{
             background-color: {p.surface_toolbar};
             color: {p.text_secondary};
             border-top: 1px solid {p.lines};
+        }}
+        /* Without these, each widget in the bar sits between two native
+           separator lines (white in a dark theme), and a label or the
+           size grip shows the window background instead of the bar's. */
+        QStatusBar::item {{
+            border: none;
+        }}
+        QStatusBar QLabel, QStatusBar QSizeGrip {{
+            background-color: transparent;
         }}
 
         QLineEdit, QComboBox, QTextEdit, QPlainTextEdit, QAbstractSpinBox {{
@@ -351,9 +442,9 @@ def build_stylesheet(palette: ColorPalette) -> str:
             image: url({_triangle_icon_path("down", p.text_disabled)});
         }}
         QComboBox QAbstractItemView {{
-            background-color: {p.surface_panel};
+            background-color: {p.surface_floating};
             color: {p.text};
-            border: 1px solid {p.lines};
+            border: 1px solid {p.lines_floating};
             selection-background-color: {p.selection_background};
             selection-color: {p.selection_text};
         }}
@@ -429,6 +520,46 @@ def build_stylesheet(palette: ColorPalette) -> str:
             padding: 0;
             min-height: 0;
             min-width: 0;
+        }}
+
+        /* The theme buttons in the status bar (ui/theme_switcher.py): one
+           pill, the active theme's button filled with the accent. */
+        QFrame[themeSwitcher="true"] {{
+            background-color: {p.surface_input};
+            border: 1px solid {p.lines};
+            border-radius: 6px;
+        }}
+        QToolButton[themeSwitch="true"] {{
+            background-color: transparent;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 2px 6px;
+        }}
+        QToolButton[themeSwitch="true"]:hover {{
+            background-color: {p.hover};
+        }}
+        QToolButton[themeSwitch="true"]:pressed {{
+            background-color: {p.accent_secondary};
+        }}
+        QToolButton[themeSwitch="true"]:focus {{
+            border: 1px solid {p.focus};
+        }}
+        QToolButton[themeSwitch="true"]:checked {{
+            background-color: {p.accent};
+            border: 1px solid {p.accent};
+        }}
+        QToolButton[themeSwitch="true"]:checked:hover,
+        QToolButton[themeSwitch="true"]:checked:pressed {{
+            background-color: {p.accent_secondary};
+            border: 1px solid {p.accent_secondary};
+        }}
+        QToolButton[themeSwitch="true"]:disabled {{
+            background-color: transparent;
+            border: 1px solid transparent;
+        }}
+        QToolButton[themeSwitch="true"]:checked:disabled {{
+            background-color: {p.text_disabled};
+            border: 1px solid {p.text_disabled};
         }}
 
         QCheckBox {{

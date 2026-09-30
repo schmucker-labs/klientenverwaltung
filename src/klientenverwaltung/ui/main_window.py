@@ -1,9 +1,9 @@
 from datetime import date, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, Qt
-from PySide6.QtGui import QActionGroup, QCloseEvent
-from PySide6.QtWidgets import QDialog, QLabel, QMainWindow, QToolButton
+from PySide6.QtCore import QSettings, QSize
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent
+from PySide6.QtWidgets import QDialog, QLabel, QMainWindow
 
 from klientenverwaltung import AUTHOR, __version__, backup, config
 from klientenverwaltung.app_context import AppServices, OpenDatabase
@@ -16,22 +16,22 @@ from klientenverwaltung.ui.dialogs import (
     show_error,
     show_info,
 )
-from klientenverwaltung.ui.icons import get_icon, load_pixmap
+from klientenverwaltung.ui.icons import load_pixmap
 from klientenverwaltung.ui.media_overview_dialog import MediaOverviewDialog
 from klientenverwaltung.ui.theme import (
+    THEME_MODE_LABELS,
     ThemeMode,
     apply_theme_mode,
-    get_palette,
     load_theme_mode,
     save_theme_mode,
 )
+from klientenverwaltung.ui.theme_switcher import ThemeSwitcher
 from klientenverwaltung.ui.treatment_type_management_dialog import (
     TreatmentTypeManagementDialog,
 )
 from klientenverwaltung.ui.window_settings import restore_geometry, save_geometry
 
 _GEOMETRY_SETTINGS_KEY = "main_window/geometry"
-_THEME_ICON_SIZE = 20
 _BACKUP_REMINDER_SETTINGS_KEY = "backup/reminder_last_shown"
 _BACKUP_REMINDER_INTERVAL = timedelta(days=7)
 
@@ -70,19 +70,15 @@ class MainWindow(QMainWindow):
         appearance_group = QActionGroup(self)
         appearance_group.setExclusive(True)
 
-        self._light_mode_action = appearance_menu.addAction("Hell")
-        self._light_mode_action.setCheckable(True)
-        appearance_group.addAction(self._light_mode_action)
-        self._light_mode_action.triggered.connect(
-            lambda: self._set_theme_mode(ThemeMode.LIGHT)
-        )
-
-        self._dark_mode_action = appearance_menu.addAction("Dunkel")
-        self._dark_mode_action.setCheckable(True)
-        appearance_group.addAction(self._dark_mode_action)
-        self._dark_mode_action.triggered.connect(
-            lambda: self._set_theme_mode(ThemeMode.DARK)
-        )
+        self._theme_actions: dict[ThemeMode, QAction] = {}
+        for mode in ThemeMode:
+            action = appearance_menu.addAction(THEME_MODE_LABELS[mode])
+            action.setCheckable(True)
+            appearance_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, mode=mode: self._set_theme_mode(mode)
+            )
+            self._theme_actions[mode] = action
 
         settings_menu.addSeparator()
         about_action = settings_menu.addAction("Über")
@@ -97,13 +93,10 @@ class MainWindow(QMainWindow):
 
     def _build_status_bar(self) -> None:
         self._backup_status_label = QLabel(self)
-        self._theme_toggle_button = QToolButton(self)
-        self._theme_toggle_button.setAutoRaise(True)
-        self._theme_toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._theme_toggle_button.setIconSize(QSize(_THEME_ICON_SIZE, _THEME_ICON_SIZE))
-        self._theme_toggle_button.clicked.connect(self._on_theme_toggle_clicked)
+        self._theme_switcher = ThemeSwitcher(self)
+        self._theme_switcher.mode_selected.connect(self._set_theme_mode)
         self.statusBar().addPermanentWidget(self._backup_status_label)
-        self.statusBar().addPermanentWidget(self._theme_toggle_button)
+        self.statusBar().addPermanentWidget(self._theme_switcher)
         self._update_backup_status_label()
 
     def _set_theme_mode(self, mode: ThemeMode) -> None:
@@ -112,25 +105,9 @@ class MainWindow(QMainWindow):
         apply_theme_mode(mode)
         self._refresh_theme_controls()
 
-    def _on_theme_toggle_clicked(self) -> None:
-        new_mode = (
-            ThemeMode.DARK if self._theme_mode is ThemeMode.LIGHT else ThemeMode.LIGHT
-        )
-        self._set_theme_mode(new_mode)
-
     def _refresh_theme_controls(self) -> None:
-        is_light = self._theme_mode is ThemeMode.LIGHT
-        self._light_mode_action.setChecked(is_light)
-        self._dark_mode_action.setChecked(not is_light)
-
-        palette = get_palette(self._theme_mode)
-        icon_name = "sun" if is_light else "moon"
-        self._theme_toggle_button.setIcon(
-            get_icon(icon_name, palette.text, _THEME_ICON_SIZE)
-        )
-        self._theme_toggle_button.setToolTip(
-            "Zu dunklem Modus wechseln" if is_light else "Zu hellem Modus wechseln"
-        )
+        self._theme_actions[self._theme_mode].setChecked(True)
+        self._theme_switcher.set_mode(self._theme_mode)
 
     def _update_backup_status_label(self) -> None:
         """Counts only backups in the configured folder: a copy on the data

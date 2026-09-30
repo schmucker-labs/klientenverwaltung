@@ -32,7 +32,7 @@ Schutz von Gesundheitsdaten.
 - Behandlungsarten frei pflegbar, deaktivieren statt löschen
 - Sicherungen beim Start und beim Beenden, geprüfte und umkehrbare Wiederherstellung,
   „Passwort ändern“ (SQLCipher-Rekey) ohne Neustart
-- Hell- und Dunkel-Theme, vollständig per Tastatur bedienbar
+- Drei Themes (Hell, Dämmerung, Dunkel), vollständig per Tastatur bedienbar
 
 Für den Anwender gibt es ein einseitiges [Notfallblatt](docs/notfallblatt.md): was bei
 „Datenplatte nicht gefunden“, einer defekten Platte oder einem versehentlich gelöschten
