@@ -31,3 +31,6 @@ dist/
 *.sqlite3-journal
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Local screenshots of the running app (may show client data) - never commit
+.testscreenshots/

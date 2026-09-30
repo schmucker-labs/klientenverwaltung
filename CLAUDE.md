@@ -82,11 +82,11 @@ klientenverwaltung/
 | first_name | str | Pflicht |
 | last_name | str | Pflicht |
 | birth_date | date, optional | |
-| street | str, optional | |
-| postal_code | str, optional | als Text (führende Null!) |
-| city | str, optional | |
-| phone | str, optional | als Text |
-| email | str, optional | |
+| street | str, optional | Straße und Hausnummer (mind. ein Buchstabe und eine Ziffer) |
+| postal_code | str, optional | als Text (führende Null!); 5 Ziffern, AT/CH 4 |
+| city | str, optional | nur Ortsname, keine Ziffern |
+| phone | str, optional | als Text, in Standardschreibweise gespeichert (`0171 1234567`, `089 1234567`); deutsche Nummernregeln, siehe Regeln |
+| email | str, optional | `name@domain.tld`, klein geschrieben gespeichert |
 | concern | text, optional | Anliegen beim Erstkontakt |
 | referral_source | str, optional | wie auf den Betrieb aufmerksam geworden |
 | consent_date | date, optional | Datum der Datenschutz-Einwilligung |
@@ -140,6 +140,36 @@ z. B. `TreatmentSession` nennen, Tabellenname bleibt `session`.
   lokale Zeit (Python-Default). `created_at`/`updated_at` von `client` und `session` sind
   UTC (SQLites `CURRENT_TIMESTAMP`) - für die Anzeige umrechnen (siehe
   `ClientService.client_since_date`). Neue Zeitstempel als naive lokale Zeit.
+- Straße, PLZ, Ort, Telefon und E-Mail bleiben optional; ausgefüllt prüft sie der Service
+  per Regex (`_CONTACT_RULES` in `services/client_service.py`) - beim Anlegen und bei
+  jedem Speichern, also auch für ältere Einträge. Ein `ValidationError` nennt alle
+  betroffenen Felder und trägt in `field` das erste, damit das Formular den Cursor
+  dorthin setzt.
+- E-Mail-Adressen werden klein geschrieben gespeichert und angezeigt (höchstens 64
+  Zeichen vor dem `@`, 254 insgesamt).
+- Dubletten-Warnung: Gibt es beim Anlegen schon einen Klienten mit demselben Vor- und
+  Nachnamen (Groß-/Kleinschreibung und Akzente egal wie bei der Suche, archivierte
+  eingeschlossen), wirft `create_client` einen `DuplicateClientError` mit der Liste der
+  vorhandenen - außer beide haben ein Geburtsdatum und die Daten unterscheiden sich. Das
+  ist eine Warnung, kein Verbot: Die Oberfläche fragt nach ("Trotzdem speichern" /
+  "Abbrechen", Standard Abbrechen) und wiederholt den Aufruf mit `allow_duplicate=True`.
+  Die Prüfung läuft als letzte, nach allen Eingabeprüfungen. `update_client` prüft nur,
+  wenn Name oder Geburtsdatum geändert werden, damit ein einmal bestätigter Namensvetter
+  nicht bei jedem Speichern erneut fragt.
+- Telefonnummern prüft und schreibt `services/phone.py` nach den deutschen Regeln
+  (Nummernpläne der Bundesnetzagentur, Schreibweise nach DIN 5008): Vorwahl mit 0 oder
+  +49/0049; Mobilnummern (015, 0160, 0162, 0163, 017) mit 11 oder 12 Ziffern samt der 0 -
+  bewusst für alle Vorwahlen gleich, obwohl der Nummernplan für 015 genau 12 vorsieht:
+  eine zu Unrecht abgelehnte Nummer verhindert das Speichern des Klienten; Festnetz mit
+  einer der 5200 Ortsnetzkennzahlen
+  (`services/german_area_codes.py`, erzeugt von `scripts/generate_area_codes.py` aus dem
+  Vorwahlverzeichnis der Bundesnetzagentur), danach mind. 3 Ziffern, insgesamt höchstens
+  14. Gespeichert und angezeigt wird einheitlich national: Vorwahl, ein Leerzeichen,
+  Nummer am Stück (`0171 1234567`, `07151 123456`), eine Durchwahl behält ihren
+  Bindestrich (`089 12345-67`). Ältere Einträge werden in Liste, Übersicht und Formular
+  ebenso angezeigt (`format_phone`) und beim nächsten Speichern umgeschrieben. Nummern
+  anderer Länder (`+43 …`) werden nur auf ihre Länge geprüft und behalten ihre
+  Gruppierung.
 - Namen von Behandlungsarten sind ohne Beachtung der Groß-/Kleinschreibung eindeutig.
 - Klient löschen löscht alle zugehörigen Sitzungen (Gesundheitsdaten dürfen nicht verwaist
   zurückbleiben). Endgültiges Löschen immer mit Sicherheitsabfrage; Alltag = archivieren.

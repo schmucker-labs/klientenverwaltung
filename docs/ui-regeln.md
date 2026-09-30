@@ -64,11 +64,41 @@ oder eine Tabelle mit Spalten hinzukommt.
 - Werkzeugleisten-Buttons neben einem Textfeld (z. B. Fett/Kursiv/Unterstrichen im
   Berichtsfenster) bekommen `Qt.FocusPolicy.NoFocus`, damit ein Klick den Fokus im
   Textfeld belässt und sofort weitergetippt werden kann - Maus-Klick und Tastenkürzel
-  funktionieren trotzdem unverändert. Eine Auswahlbox in derselben Leiste, die zum
+  funktionieren trotzdem unverändert. Sie sind so hoch wie das Steuerelement daneben
+  (z. B. die Überschriften-Auswahl) und quadratisch - dafür `ToolbarButton` aus
+  `ui/buttons.py` verwenden: Die Eigenschaft `toolbarButton` nimmt ihnen im Theme
+  Innenabstand, Mindesthöhe und Mindestbreite eines Dialog-Buttons, die Größe kommt
+  aus `sizeHint()` (Höhe des Nachbarelements, Größenrichtlinie `Fixed`) statt aus
+  `setFixedSize()` - ein festes Minimum setzt diese Theme-Regel bei jedem Anwenden des
+  Styles wieder zurück. Eine Auswahlbox in derselben Leiste, die zum
   Aufklappen selbst Fokus braucht (z. B. die Überschriften-Auswahl), gibt den Fokus
   nach einer echten Auswahl (Signal `activated`, nicht `currentIndexChanged` - das
   feuert auch bei einer rein programmatischen Aktualisierung) an das zuletzt aktive
   Textfeld zurück.
+- Alle Buttons sind gleich groß: 32 px hoch (wie die Eingabefelder) und mindestens
+  96 px breit, damit kurze Beschriftungen wie "OK" keine Stummel ergeben. Die Größe
+  kommt ausschließlich aus dem Theme (`QPushButton` in `ui/theme.py`), nie aus
+  `setFixedWidth()`/`setFixedHeight()` im Fenstercode - so gilt sie auch für
+  QDialogButtonBox und QMessageBox.
+- Button-Zeilen werden in jedem Fenster gleich aufgebaut, über `ui/buttons.py` statt
+  über ein eigenes QHBoxLayout:
+  - `action_row()` - die Zeile unter einer Tabelle. Links (`independent`), was ohne
+    ausgewählte Zeile funktioniert, Anlegen zuerst; rechts (`on_selection`), was auf
+    die ausgewählte Zeile wirkt, in der Reihenfolge Öffnen/Ansehen, Bearbeiten,
+    Archivieren/Deaktivieren, "Löschen" immer zuletzt.
+  - `window_row()` - die Buttons des Fensters selbst, rechtsbündig in der letzten
+    Zeile: "Schließen" bzw. "Speichern" und "Schließen"/"Abbrechen". In einem Fenster
+    ohne "Speichern" ist "Schließen" der Standard-Button (`setDefault(True)`).
+  - Beide liefern ein `ButtonRow`-Widget, kein bloßes Layout: Die Mindestbreite aus
+    dem Theme gilt für Qt als gesamte Mindestbreite eines Buttons - ein Layout würde
+    längere Beschriftungen darauf zusammendrücken und abschneiden, bevor das Fenster
+    breiter wird. `ButtonRow` ist deshalb nie schmaler, als alle Buttons brauchen.
+- Ein Button, der etwas Neues anlegt, ist ein `CreateButton` (Plus vor dem Text, in
+  der Textfarbe des aktiven Themes, färbt sich bei einem Theme-Wechsel selbst um) und
+  nennt, was er anlegt: "Neuer Klient", "Neue Sitzung", "Neue Behandlungsart" - nicht
+  nur "Neu". In Klientenliste und Sitzungsfenster gibt es dazu Strg+N (steht im
+  Tooltip) und denselben Eintrag im Kontextmenü der Tabelle, auch auf der leeren
+  Fläche unter den Zeilen.
 - Umschalt-Buttons (checkable QPushButton) zeigen ihren aktiven Zustand ausschließlich
   über `:checked` mit der Akzentfarbe des Themes und kontrastreicher Schrift, deutlich
   vom inaktiven Zustand unterscheidbar in Light UND Dark - dazu `:checked:hover`,
@@ -113,7 +143,65 @@ oder eine Tabelle mit Spalten hinzukommt.
   vollständig nutzbar sein; bei zu wenig Platz den Inhalt in eine QScrollArea legen.
 - Sitzungen liegen in einem eigenen Fenster, nicht im Klientenfenster. Das Klientenfenster
   zeigt nur Stammdaten, Anliegen und Notizen; der Zugang zu den Sitzungen erfolgt über
-  einen Button unten mit Anzahl und Datum der letzten Sitzung.
+  einen Button unten mit Anzahl und Datum der letzten Sitzung. Es ist zweispaltig:
+  links das Formular (scrollt bei wenig Höhe), darunter der Sitzungen-Button; rechts
+  nur Anliegen und Notizen. "Speichern" steht unten neben "Schließen".
+- Zwischen Eingabefeldern und dem Scrollbalken einer QScrollArea bleibt derselbe Abstand
+  wie der Außenrand des Dialogs (`layout.contentsMargins()`, aus dem Style gelesen, nicht
+  als feste Zahl): als rechter Rand des gescrollten Inhalts. Reichen die Felder ohne
+  Scrollbalken bis an den Dialogrand (Berichtsfenster), gibt es diesen Rand nur, solange
+  der Scrollbalken sichtbar ist (`rangeChanged` des Scrollbalkens) - sonst stünden sie
+  gegenüber Überschrift und Buttons eingerückt.
+- Abstände in einem Dialog: nur zwei Maße, beide aus dem Style statt als feste Zahl -
+  zwischen den Blöcken (Überschrift, Werkzeugleiste, beschriftetes Feld, Button-Zeile) der
+  Außenrand des Dialogs, innerhalb eines Blocks (Beschriftung und ihr Feld, die Elemente
+  einer Werkzeugleiste) der Standardabstand des Layouts. Eingebettete Layouts (z. B. eine
+  Werkzeugleiste als eigenes QWidget) bekommen Rand 0, damit alles an derselben linken
+  Kante beginnt.
+- Trennlinie zwischen gleichartigen Abschnitten (z. B. den Sitzungen im Berichtsverlauf):
+  ein 1 px hoher QFrame mit der Eigenschaft `divider`, den das Theme in der Linienfarbe
+  (`lines`, wie die Feldrahmen) einfärbt - keine Karten/Rahmen um die Abschnitte, die
+  Textfelder darin sind schon gerahmt. Ober- und unterhalb der doppelte Layout-Rand. Der
+  Leerraum am Ende einer solchen Liste bekommt `addStretch(1)`, sonst teilen sich die
+  Abschnitte die überschüssige Höhe und rücken in einem hohen Fenster auseinander.
+- Überschriften in Anzeige-Fenstern haben zwei Ränge: die Überschrift eines Eintrags
+  (Name in der Klientenübersicht, "Sitzung vom …" im Berichtsverlauf) fett und 2 pt
+  größer; Beschriftungen darunter ("Bericht", "Impulse") in normaler Schrift und
+  Sekundärfarbe über die Eigenschaft `secondary` (Theme: `QLabel[secondary="true"]`).
+- Der Berichtsverlauf hat über der Liste eine feste Zeile mit zwei Auswahlboxen:
+  "Behandlungsart" (Standard "Alle Behandlungsarten"; nur Arten, zu denen dieser Klient
+  Berichte hat) und "Sortieren nach Datum" (Standard absteigend = neueste zuerst). Die
+  Sortierung wird in QSettings gemerkt, die Behandlungsart nicht.
+- Tabellen werden über einen Klick auf die Spaltenüberschrift sortiert
+  (`setSortingEnabled(True)`, `sort()` im Tabellenmodell, nach jedem Neuladen erneut
+  anwenden, `sortIndicatorChanged` speichert den Kopfzeilen-Zustand). `sort()` muss die
+  persistenten Indizes mitverschieben (`changePersistentIndexList`, siehe
+  `SessionTableModel.sort`), damit die Auswahl auf demselben Eintrag bleibt.
+  `setSortingEnabled(True)` erst nach `restore_header_state()` aufrufen: ein Zustand,
+  der gespeichert wurde, bevor die Tabelle sortierbar war, blendet den Sortierpfeil
+  sonst wieder aus.
+- Eine Tabelle behält ihre Markierung über jedes Neuladen hinweg: Wer eine Sitzung
+  markiert, "Medien" öffnet und wieder schließt, kann direkt "Bearbeiten" klicken, ohne
+  die Zeile erneut anzuklicken. Jedes Tabellenmodell lädt mit einem Model-Reset neu, und
+  der verwirft die Auswahl der Ansicht - die `_reload…()`-Methode merkt sich deshalb
+  vorher den markierten Eintrag und markiert ihn danach wieder
+  (`select_rows_where()` in `ui/table_selection.py`). Immer über die ID des Eintrags,
+  nie über die Zeilennummer: Nach dem Sortieren steht in derselben Zeile ein anderer
+  Eintrag, und "Löschen" darf nie auf einen anderen zeigen als den angeklickten. Ein
+  gelöschter Eintrag hinterlässt keine Markierung; ein neu angelegter (Klient, Sitzung,
+  Behandlungsart, Mediendatei) wird markiert, damit er zu finden ist.
+- Ein Fenster, das hinter einem geöffneten Dialog sichtbar bleibt, zeigt nie veraltete
+  Daten: Es aktualisiert sich, sobald im Dialog gespeichert wird, nicht erst, wenn er
+  geschlossen wird ("Speichern" im Klientenfenster und Strg+S im Berichtsfenster lassen
+  das Fenster offen). Das gilt für jede Ebene dahinter, bis zur Klientenliste im
+  Hauptfenster. Dafür sendet der Dialog ein Signal (`saved` in einem Formular wie
+  `ReportDialog` oder `TreatmentTypeEditDialog`, `data_changed` in einem Fenster, das
+  selbst weitere Dialoge öffnet: `ClientDetailDialog`, `ClientSessionsDialog`,
+  `ClientOverviewDialog`, `TreatmentTypeManagementDialog`), das der Aufrufer vor
+  `exec()` mit seiner eigenen `_reload()`-Methode verbindet und - wenn hinter ihm
+  wieder ein Fenster liegt - an sein eigenes `data_changed` weiterreicht. Kein
+  programmweites Signal: Dialoge bleiben nach dem Schließen als Kinder ihres
+  Elternfensters bestehen und würden sonst weiter mitladen.
 - Bei gestylten QSpinBox, QDoubleSpinBox und QDateTimeEdit immer up-button UND
   down-button vollständig definieren (Breite, Höhe, subcontrol-origin/-position),
   sonst wird eine der beiden Klickflächen winzig, obwohl der Pfeil normal aussieht.
